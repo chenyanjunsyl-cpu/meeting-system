@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>会议历史查询 - 会议室预定系统</title>
+    <style>
+        :root {
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            color: #111827;
+            background: #eef2ff;
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; min-height: 100vh; background: radial-gradient(circle at top right, rgba(37,99,235,0.14), transparent 30%), #eef2ff; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 24px 20px 40px; }
+        .header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; }
+        h1 { margin: 0; font-size: 2.2rem; }
+        .actions { display: flex; flex-wrap: wrap; gap: 12px; }
+        .card { background: #ffffff; border: 1px solid rgba(148,163,184,0.15); border-radius: 24px; box-shadow: 0 24px 50px rgba(15,23,42,0.08); padding: 24px; margin-bottom: 20px; }
+        .grid { display: grid; grid-template-columns: 1fr 2fr; gap: 22px; }
+        @media (max-width: 1000px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+        .button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 18px; background: #2563eb; color: #fff; text-decoration: none; border-radius: 14px; border: none; cursor: pointer; transition: transform 0.16s ease, background 0.16s ease; }
+        .button:hover { background: #1d4ed8; transform: translateY(-1px); }
+        .button.secondary { background: #7c3aed; }
+        .button.secondary:hover { background: #6d28d9; }
+        .form-row { margin-bottom: 16px; }
+        label { display: block; margin-bottom: 8px; font-size: 0.95rem; color: #475569; font-weight: 500; }
+        input { width: 100%; padding: 12px 14px; border: 1px solid #cbd5e1; border-radius: 14px; background: #f8fafc; color: #0f172a; }
+        input:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 4px rgba(37,99,235,0.12); }
+        
+        .calendar { margin-top: 16px; }
+        .calendar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; font-size: 1.1rem; font-weight: 600; }
+        .calendar-nav { display: flex; gap: 10px; }
+        .calendar-nav button { padding: 8px 12px; background: #dbeafe; color: #1e40af; border: none; border-radius: 8px; cursor: pointer; }
+        .calendar-nav button:hover { background: #bfdbfe; }
+        
+        .weekdays { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-bottom: 8px; }
+        .weekday { text-align: center; font-weight: 600; color: #475569; padding: 8px; font-size: 0.85rem; }
+        
+        .days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+        .day { padding: 12px 8px; border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; color: #475569; text-align: center; cursor: pointer; transition: all 0.2s; min-height: 48px; display: flex; flex-direction: column; justify-content: center; }
+        .day:hover { border-color: #2563eb; background: #eff6ff; }
+        .day.other-month { color: #cbd5e1; opacity: 0.5; }
+        .day.has-booking { background: #dbeafe; border-color: #2563eb; color: #0f172a; font-weight: 600; }
+        .day.has-booking:hover { background: #bfdbfe; }
+        .day.selected { background: #2563eb; color: #fff; border-color: #2563eb; }
+        .day.today { border: 2px solid #f59e0b; }
+        .day-count { font-size: 0.75rem; color: #6b7280; margin-top: 2px; }
+        
+        table { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 16px; background: #fff; }
+        th, td { padding: 18px 16px; border-bottom: 1px solid #e2e8f0; text-align: left; }
+        th { background: #eff6ff; color: #0f172a; font-weight: 600; }
+        tbody tr:nth-child(odd) { background: #f8fafc; }
+        tbody tr { height: auto; }
+        tbody tr td { vertical-align: top; }
+        .minutes-cell { max-width: 260px; color: #475569; font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap; }
+        .no-minutes { color: #9ca3af; font-style: italic; }
+        
+        .empty-state { text-align: center; color: #475569; padding: 40px 20px; }
+        .empty-state-icon { font-size: 3rem; margin-bottom: 16px; }
+        .back-btn { background: #6b7280; }
+        .back-btn:hover { background: #4b5563; }
+        .export-btn { background: #10b981; }
+        .export-btn:hover { background: #059669; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <div>
+            <h1>会议历史查询</h1>
+            <p style="margin: 8px 0 0; color: #475569;">查看历史会议预定和详细信息</p>
+        </div>
+        <div class="actions">
+            <a href="/" class="button back-btn">返回首页</a>
+        </div>
+    </div>
+
+    <div class="grid">
+        <div class="card">
+            <h3 style="margin-top: 0;">查询条件</h3>
+            <form method="post" action="/history">
+                <div class="form-row">
+                    <label for="start_date">开始日期</label>
+                    <input type="date" id="start_date" name="start_date" value="{{ start_date }}">
+                </div>
+                <div class="form-row">
+                    <label for="end_date">结束日期</label>
+                    <input type="date" id="end_date" name="end_date" value="{{ end_date }}">
+                </div>
+                <div class="form-row">
+                    <label for="room_filter">会议室</label>
+                    <select id="room_filter" name="room_id" style="width: 100%; padding: 12px 14px; border: 1px solid #cbd5e1; border-radius: 14px; background: #f8fafc; color: #0f172a;">
+                        <option value="">全部会议室</option>
+                        {% for room in all_rooms %}
+                            <option value="{{ room.room_id }}" {% if room.room_id|string == room_id_filter|string %}selected{% endif %}>{{ room.name }}（{{ room.location }}）</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="submit" class="button" style="width: 100%; margin-top: 10px;">查询</button>
+            </form>
+
+            <div class="calendar" id="miniCalendar">
+                <div class="calendar-header">
+                    <span id="calMonthYear"></span>
+                    <div class="calendar-nav">
+                        <button onclick="prevMonth()">&lt;</button>
+                        <button onclick="nextMonth()">&gt;</button>
+                    </div>
+                </div>
+                <div class="weekdays">
+                    <div class="weekday">日</div>
+                    <div class="weekday">一</div>
+                    <div class="weekday">二</div>
+                    <div class="weekday">三</div>
+                    <div class="weekday">四</div>
+                    <div class="weekday">五</div>
+                    <div class="weekday">六</div>
+                </div>
+                <div class="days" id="calendarDays"></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3 style="margin-top: 0;">查询结果</h3>
+            {% if bookings %}
+                <div style="margin-bottom: 16px; display: flex; gap: 10px; flex-wrap: wrap;">
+                    <span style="color: #475569;">找到 <strong>{{ bookings|length }}</strong> 条会议记录</span>
+                    <form method="post" action="/export_history" style="display: inline;">
+                        <input type="hidden" name="start_date" value="{{ start_date }}">
+                        <input type="hidden" name="end_date" value="{{ end_date }}">
+                        <input type="hidden" name="room_id" value="{{ room_id_filter or '' }}">
+                        <button type="submit" class="button export-btn" style="padding: 10px 16px; font-size: 0.95rem;">
+                            📥 导出为 CSV
+                        </button>
+                    </form>
+                </div>
+                <table>
+                    <thead>
+                    <tr>
+                        <th>日期</th>
+                        <th>会议室</th>
+                        <th>时间</th>
+                        <th>主题</th>
+                        <th>申请人</th>
+                        <th>参会人员</th>
+                        <th>会议纪要</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for booking in bookings %}
+                        <tr>
+                            <td><strong>{{ booking.date }}</strong></td>
+                            <td>{{ booking.room_name }}</td>
+                            <td>{{ booking.start_time }} - {{ booking.end_time }}</td>
+                            <td>{{ booking.subject }}</td>
+                            <td>{{ booking.owner }}</td>
+                            <td style="color: #6b7280; font-size: 0.9rem;">{{ booking.attendees }}</td>
+                            <td class="minutes-cell">
+                                {% if booking.minutes %}
+                                    {{ booking.minutes }}
+                                {% else %}
+                                    <span class="no-minutes">未记录</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <div class="empty-state">
+                    <div class="empty-state-icon">📭</div>
+                    <p>未找到符合条件的会议记录</p>
+                    <p style="font-size: 0.9rem; margin-top: 8px;">请调整查询条件重试</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+let currentCalDate = new Date();
+const bookingDates = {{ booking_dates|tojson }};
+
+function renderCalendar() {
+    const year = currentCalDate.getFullYear();
+    const month = currentCalDate.getMonth();
+    
+    document.getElementById('calMonthYear').textContent = `${year}年 ${month + 1}月`;
+    
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const prevLastDay = new Date(year, month, 0);
+    
+    const prevDays = prevLastDay.getDate();
+    const currDays = lastDay.getDate();
+    const nextDays = 42 - (firstDay.getDay() + currDays);
+    
+    let html = '';
+    
+    // 上月的天数
+    for (let i = prevDays - firstDay.getDay() + 1; i <= prevDays; i++) {
+        html += `<div class="day other-month">${i}</div>`;
+    }
+    
+    // 当月的天数
+    const today = new Date();
+    for (let i = 1; i <= currDays; i++) {
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+        const isToday = today.getFullYear() === year && today.getMonth() === month && today.getDate() === i;
+        const hasBooking = bookingDates.includes(dateStr);
+        const isSelected = window.selectedDate === dateStr;
+        
+        let className = 'day';
+        if (isToday) className += ' today';
+        if (hasBooking) className += ' has-booking';
+        if (isSelected) className += ' selected';
+        
+        const count = bookingDates.filter(d => d === dateStr).length;
+        const countHtml = hasBooking ? `<div class="day-count">${count}场</div>` : '';
+        
+        html += `<div class="${className}" onclick="selectDate('${dateStr}')">${i}${countHtml}</div>`;
+    }
+    
+    // 下月的天数
+    for (let i = 1; i <= nextDays; i++) {
+        html += `<div class="day other-month">${i}</div>`;
+    }
+    
+    document.getElementById('calendarDays').innerHTML = html;
+}
+
+function prevMonth() {
+    currentCalDate.setMonth(currentCalDate.getMonth() - 1);
+    renderCalendar();
+}
+
+function nextMonth() {
+    currentCalDate.setMonth(currentCalDate.getMonth() + 1);
+    renderCalendar();
+}
+
+function selectDate(dateStr) {
+    window.selectedDate = dateStr;
+    const form = document.querySelector('form');
+    const startInput = form.querySelector('#start_date');
+    const endInput = form.querySelector('#end_date');
+    startInput.value = dateStr;
+    endInput.value = dateStr;
+    form.submit();
+}
+
+window.selectedDate = '{{ selected_date or '' }}';
+renderCalendar();
+</script>
+</body>
+</html>

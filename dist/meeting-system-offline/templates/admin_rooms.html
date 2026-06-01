@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>会议室管理后台</title>
+    <style>
+        :root {
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            background: #eef2ff;
+            color: #111827;
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; min-height: 100vh; background: radial-gradient(circle at top right, rgba(37,99,235,0.14), transparent 34%), #eef2ff; }
+        .container { max-width: 1180px; margin: 0 auto; padding: 24px 20px 40px; }
+        .card { background: #fff; border: 1px solid rgba(148,163,184,0.15); border-radius: 22px; box-shadow: 0 20px 45px rgba(15,23,42,0.08); padding: 24px; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 16px; }
+        th, td { padding: 14px 16px; border-bottom: 1px solid #e2e8f0; }
+        th { background: #eff6ff; color: #0f172a; font-weight: 600; }
+        tbody tr:nth-child(odd) { background: #f8fafc; }
+        .button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 18px; border-radius: 14px; border: none; background: #2563eb; color: #fff; text-decoration: none; cursor: pointer; transition: background 0.18s ease, transform 0.18s ease; }
+        .button:hover { background: #1d4ed8; transform: translateY(-1px); }
+        .form-row { margin-bottom: 16px; }
+        label { display: block; margin-bottom: 8px; font-size: 0.95rem; color: #475569; }
+        input, select { width: 100%; padding: 12px 14px; border: 1px solid #cbd5e1; border-radius: 14px; background: #f8fafc; color: #0f172a; }
+        input:focus, select:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 4px rgba(37,99,235,0.12); }
+        .inline-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; align-items: end; }
+        .warning { color: #b91c1c; }
+        .success { color: #047857; }
+        .topbar { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 18px; }
+        .topbar span { color: #475569; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px;">
+        <h1>会议室管理后台</h1>
+        <div>
+            <span>欢迎，{{ current_user.username }}（{{ current_user.role }}）</span>
+            <a href="/logout" class="button" style="background:#6b7280;">退出</a>
+            <a href="/admin/bookings" class="button">预约管理</a>
+            <a href="/admin/users" class="button">用户管理</a>
+            <a href="/" class="button">前台首页</a>
+        </div>
+    </div>
+    <div class="card">
+        <p>当前会议室配置来自 <code>rooms.json</code>，你也可以直接编辑该文件后点击“同步配置到数据库”。</p>
+        <form method="post" action="/admin/rooms/sync">
+            <button type="submit" class="button">同步配置到数据库</button>
+        </form>
+    </div>
+    <div class="card">
+        <h2>当前会议室列表</h2>
+        <table>
+            <thead>
+            <tr>
+                <th>名称</th>
+                <th>地点</th>
+                <th>容纳</th>
+                <th>操作</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for room in rooms %}
+                <tr>
+                    <td>{{ room.name }}</td>
+                    <td>{{ room.location }}</td>
+                    <td>{{ room.capacity }} 人</td>
+                    <td>
+                        <a href="/admin/rooms?edit={{ room.room_id }}" class="button" style="background:#f59e0b;">编辑</a>
+                        <form method="post" action="/admin/rooms/delete/{{ room.room_id }}" style="display:inline-block; margin-left:8px;">
+                            <button type="submit" class="button" style="background:#dc2626;">删除</button>
+                        </form>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="card">
+        <h2>新增会议室</h2>
+        <form method="post" action="/admin/rooms/add">
+            <div class="inline-form">
+                <div class="form-row">
+                    <label for="name">会议室名称</label>
+                    <input id="name" name="name" placeholder="例如 401" required>
+                </div>
+                <div class="form-row">
+                    <label for="location">地点</label>
+                    <input id="location" name="location" placeholder="例如 4楼" required>
+                </div>
+                <div class="form-row">
+                    <label for="capacity">容纳人数</label>
+                    <input id="capacity" name="capacity" type="number" min="1" placeholder="例如 10" required>
+                </div>
+                <div class="form-row">
+                    <button type="submit" class="button">添加会议室</button>
+                </div>
+            </div>
+        </form>
+    </div>
+    {% if edit_room %}
+    <div class="card">
+        <h2>编辑会议室：{{ edit_room.name }}</h2>
+        <form method="post" action="/admin/rooms/update/{{ edit_room.room_id }}">
+            <div class="inline-form">
+                <div class="form-row">
+                    <label for="edit-name">会议室名称</label>
+                    <input id="edit-name" name="name" value="{{ edit_room.name }}" required>
+                </div>
+                <div class="form-row">
+                    <label for="edit-location">地点</label>
+                    <input id="edit-location" name="location" value="{{ edit_room.location }}" required>
+                </div>
+                <div class="form-row">
+                    <label for="edit-capacity">容纳人数</label>
+                    <input id="edit-capacity" name="capacity" type="number" min="1" value="{{ edit_room.capacity }}" required>
+                </div>
+                <div class="form-row">
+                    <button type="submit" class="button">保存修改</button>
+                </div>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+    {% if message %}
+        <div class="card success">{{ message }}</div>
+    {% endif %}
+    {% if error %}
+        <div class="card warning">{{ error }}</div>
+    {% endif %}
+    <div class="card">
+        <a href="/" class="button">返回首页</a>
+    </div>
+</div>
+</body>
+</html>

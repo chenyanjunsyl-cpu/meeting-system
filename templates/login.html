@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>登录</title>
+    <style>
+        :root { font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; color: #111827; background: #eef2ff; }
+        * { box-sizing: border-box; }
+        body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: radial-gradient(circle at top right, rgba(37,99,235,0.16), transparent 30%), #eef2ff; }
+        .container { width: min(440px, calc(100vw - 32px)); padding: 28px 26px; background: #ffffff; border: 1px solid rgba(148,163,184,0.18); border-radius: 24px; box-shadow: 0 26px 60px rgba(15,23,42,0.1); }
+        h1 { margin: 0 0 22px; font-size: 1.9rem; letter-spacing: -0.03em; }
+        .form-row { margin-bottom: 18px; }
+        label { display: block; margin-bottom: 8px; color: #475569; font-size: 0.96rem; }
+        input { width: 100%; padding: 14px 16px; border: 1px solid #cbd5e1; border-radius: 14px; background: #f8fafc; color: #0f172a; }
+        input:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 4px rgba(37,99,235,0.12); }
+        .button { width: 100%; padding: 14px 18px; border: none; border-radius: 14px; background: #2563eb; color: #fff; font-size: 1rem; cursor: pointer; transition: background 0.18s ease, transform 0.18s ease; }
+        .button:hover { background: #1d4ed8; transform: translateY(-1px); }
+        .error { color: #b91c1c; margin-bottom: 16px; }
+        .note { color: #475569; margin-top: 18px; font-size: 0.95rem; line-height: 1.65; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>用户登录</h1>
+    {% if error %}
+        <div class="error">{{ error }}</div>
+    {% endif %}
+    <form method="post">
+        <div class="form-row">
+            <label for="username">用户名</label>
+            <input type="text" id="username" name="username" required>
+        </div>
+        <div class="form-row">
+            <label for="password">密码</label>
+            <input type="password" id="password" name="password" required>
+        </div>
+        <button type="submit" class="button">登录</button>
+    </form>
+    <p class="note">请使用 AD 域账号登录；未启用 AD 时可使用本地管理员账号登录。</p>
+</div>
+</body>
+</html>

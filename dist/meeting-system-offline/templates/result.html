@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>预约结果</title>
+    <style>
+        :root { font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; color: #111827; background: #eef2ff; }
+        * { box-sizing: border-box; }
+        body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: radial-gradient(circle at top left, rgba(37,99,235,0.12), transparent 28%), #eef2ff; }
+        .container { width: min(720px, calc(100vw - 32px)); padding: 28px; background: #ffffff; border-radius: 24px; border: 1px solid rgba(148,163,184,0.18); box-shadow: 0 24px 50px rgba(15,23,42,0.08); text-align: center; }
+        h1 { margin-top: 0; font-size: 2rem; }
+        .success { color: #047857; font-size: 1.05rem; margin-top: 16px; }
+        .error { color: #b91c1c; font-size: 1.05rem; margin-top: 16px; }
+        .button { display: inline-flex; align-items: center; justify-content: center; margin-top: 24px; padding: 14px 22px; background: #2563eb; color: #fff; text-decoration: none; border-radius: 16px; transition: transform 0.18s ease, background 0.18s ease; }
+        .button:hover { background: #1d4ed8; transform: translateY(-1px); }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>{% if success %}成功{% elif error %}错误{% else %}结果{% endif %}</h1>
+    {% if success %}
+        <p class="success">{{ success }}</p>
+    {% endif %}
+    {% if message %}
+        <p class="success">{{ message }}</p>
+    {% endif %}
+    {% if error %}
+        <p class="error">{{ error }}</p>
+    {% endif %}
+    <a href="{{ redirect_url or '/' }}" class="button">{{ button_text or '返回首页' }}</a>
+</div>
+</body>
+</html>

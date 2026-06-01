@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>会议纪要 - 会议室预定系统</title>
+    <style>
+        :root {
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            color: #111827;
+            background: #eef2ff;
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; min-height: 100vh; background: radial-gradient(circle at top left, rgba(37,99,235,0.14), transparent 30%), #eef2ff; }
+        .container { max-width: 900px; margin: 0 auto; padding: 24px 20px 40px; }
+        .header { margin-bottom: 28px; }
+        h1 { margin: 0; font-size: 2rem; }
+        .meeting-info { margin: 16px 0 0; font-size: 0.95rem; color: #475569; }
+        .meeting-info strong { color: #0f172a; }
+        
+        .card { background: #ffffff; border: 1px solid rgba(148,163,184,0.15); border-radius: 24px; box-shadow: 0 24px 50px rgba(15,23,42,0.08); padding: 28px; }
+        
+        .form-row { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 10px; font-size: 0.95rem; color: #475569; font-weight: 500; }
+        
+        textarea { width: 100%; padding: 14px 16px; border: 1px solid #cbd5e1; border-radius: 14px; background: #f8fafc; color: #0f172a; font-family: inherit; font-size: 0.95rem; line-height: 1.6; resize: vertical; min-height: 300px; }
+        textarea:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 4px rgba(37,99,235,0.12); }
+        
+        .char-count { text-align: right; color: #6b7280; font-size: 0.85rem; margin-top: 6px; }
+        
+        .button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 14px 20px; background: #2563eb; color: #fff; text-decoration: none; border-radius: 14px; border: none; cursor: pointer; transition: transform 0.16s ease, background 0.16s ease; font-size: 1rem; }
+        .button:hover { background: #1d4ed8; transform: translateY(-1px); }
+        .button.cancel { background: #6b7280; }
+        .button.cancel:hover { background: #4b5563; }
+        
+        .actions { display: flex; gap: 12px; margin-top: 24px; flex-wrap: wrap; }
+        
+        .tips { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; color: #78350f; font-size: 0.9rem; }
+        .tips strong { color: #b45309; }
+        
+        .meeting-details { background: #eff6ff; padding: 16px; border-radius: 12px; margin-bottom: 20px; }
+        .detail-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(59,130,246,0.2); }
+        .detail-row:last-child { border-bottom: none; }
+        .detail-label { color: #475569; font-size: 0.9rem; }
+        .detail-value { color: #0f172a; font-weight: 600; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>会议纪要记录</h1>
+        <div class="meeting-info">
+            会议室：<strong>{{ booking.room_name }}</strong> | 
+            日期：<strong>{{ booking.date }}</strong> | 
+            时间：<strong>{{ booking.start_time }} - {{ booking.end_time }}</strong> | 
+            主题：<strong>{{ booking.subject }}</strong>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="meeting-details">
+            <div class="detail-row">
+                <span class="detail-label">申请人</span>
+                <span class="detail-value">{{ booking.owner }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">参会人员</span>
+                <span class="detail-value">{{ booking.attendees }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">会议地点</span>
+                <span class="detail-value">{{ booking.location }}</span>
+            </div>
+        </div>
+
+        <div class="tips">
+            <strong>💡 提示：</strong>在下方记录会议内容摘要、讨论要点、决议事项、后续行动等重要信息。记录将自动保存。
+        </div>
+
+        <form method="post">
+            <div class="form-row">
+                <label for="minutes">会议纪要内容</label>
+                <textarea id="minutes" name="minutes" placeholder="请输入会议纪要...
+例如：
+• 讨论要点：...
+• 达成共识：...
+• 决议事项：...
+• 后续行动：...
+• 下次会议时间：...">{{ booking.minutes or '' }}</textarea>
+                <div class="char-count">
+                    <span id="charCount">0</span> / <span id="maxCount">5000</span>
+                </div>
+            </div>
+
+            <div class="actions">
+                <button type="submit" class="button">💾 保存纪要</button>
+                <a href="/my_bookings" class="button cancel">返回列表</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+const textarea = document.getElementById('minutes');
+const charCount = document.getElementById('charCount');
+const maxCount = document.getElementById('maxCount');
+
+textarea.addEventListener('input', function() {
+    charCount.textContent = this.value.length;
+});
+
+// 初始化字符数
+charCount.textContent = textarea.value.length;
+
+// 防止超出限制
+textarea.addEventListener('keydown', function(e) {
+    if (this.value.length >= 5000 && e.key !== 'Backspace' && e.key !== 'Delete') {
+        e.preventDefault();
+    }
+});
+</script>
+</body>
+</html>

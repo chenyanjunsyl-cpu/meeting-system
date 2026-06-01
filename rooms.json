@@ -1,0 +1,27 @@
+[
+  {
+    "name": "201",
+    "capacity": 8,
+    "location": "2楼"
+  },
+  {
+    "name": "301",
+    "capacity": 8,
+    "location": "3楼"
+  },
+  {
+    "name": "401",
+    "capacity": 10,
+    "location": "4楼"
+  },
+  {
+    "name": "402",
+    "capacity": 10,
+    "location": "4楼"
+  },
+  {
+    "name": "403",
+    "capacity": 12,
+    "location": "4楼"
+  }
+]
