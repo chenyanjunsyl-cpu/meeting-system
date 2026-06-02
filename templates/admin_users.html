@@ -150,6 +150,14 @@
                     <input id="ad_query" name="ad_query" value="{{ ad_query }}" placeholder="留空搜索全部 AD 用户，或输入姓名、账号、邮箱">
                 </div>
                 <div class="form-row">
+                    <label for="ad_page_size">每页条数</label>
+                    <select id="ad_page_size" name="ad_page_size">
+                        {% for size in ad_page_size_options %}
+                            <option value="{{ size }}" {% if size == ad_page_size %}selected{% endif %}>{{ size }} 条</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-row">
                     <button type="submit" class="button">搜索</button>
                 </div>
             </div>
@@ -209,15 +217,15 @@
                 {% set page_end = ad_page + 2 if ad_page + 2 < ad_total_pages else ad_total_pages %}
                 <div class="pagination">
                     {% if ad_page > 1 %}
-                        <a class="page-link" href="{{ url_for('admin_users', ad_query=ad_query, ad_page=ad_page - 1) }}">上一页</a>
+                        <a class="page-link" href="{{ url_for('admin_users', ad_query=ad_query, ad_page=ad_page - 1, ad_page_size=ad_page_size) }}">上一页</a>
                     {% else %}
                         <span class="page-link disabled">上一页</span>
                     {% endif %}
                     {% for page_no in range(page_start, page_end + 1) %}
-                        <a class="page-link {% if page_no == ad_page %}active{% endif %}" href="{{ url_for('admin_users', ad_query=ad_query, ad_page=page_no) }}">{{ page_no }}</a>
+                        <a class="page-link {% if page_no == ad_page %}active{% endif %}" href="{{ url_for('admin_users', ad_query=ad_query, ad_page=page_no, ad_page_size=ad_page_size) }}">{{ page_no }}</a>
                     {% endfor %}
                     {% if ad_page < ad_total_pages %}
-                        <a class="page-link" href="{{ url_for('admin_users', ad_query=ad_query, ad_page=ad_page + 1) }}">下一页</a>
+                        <a class="page-link" href="{{ url_for('admin_users', ad_query=ad_query, ad_page=ad_page + 1, ad_page_size=ad_page_size) }}">下一页</a>
                     {% else %}
                         <span class="page-link disabled">下一页</span>
                     {% endif %}

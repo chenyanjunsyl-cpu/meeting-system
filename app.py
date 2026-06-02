@@ -39,7 +39,8 @@ from ad_service import ADServiceError, authenticate_ad_user, is_ad_enabled, sear
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-only-change-me")
-AD_ADMIN_PAGE_SIZE = 20
+AD_ADMIN_PAGE_SIZE_OPTIONS = [20, 50, 100]
+DEFAULT_AD_ADMIN_PAGE_SIZE = 20
 
 init_db()
 
@@ -319,6 +320,7 @@ def render_admin_users(
     ad_users=None,
     ad_query="",
     ad_page=1,
+    ad_page_size=DEFAULT_AD_ADMIN_PAGE_SIZE,
     ad_total=0,
     ad_total_pages=0,
     ad_search_performed=False,
@@ -334,7 +336,8 @@ def render_admin_users(
         ad_page=ad_page,
         ad_total=ad_total,
         ad_total_pages=ad_total_pages,
-        ad_page_size=AD_ADMIN_PAGE_SIZE,
+        ad_page_size=ad_page_size,
+        ad_page_size_options=AD_ADMIN_PAGE_SIZE_OPTIONS,
         ad_search_performed=ad_search_performed,
         message=message,
         error=error,
@@ -348,6 +351,9 @@ def admin_users():
     ad_page = parse_int(request.args.get("ad_page")) or 1
     if ad_page < 1:
         ad_page = 1
+    ad_page_size = parse_int(request.args.get("ad_page_size")) or DEFAULT_AD_ADMIN_PAGE_SIZE
+    if ad_page_size not in AD_ADMIN_PAGE_SIZE_OPTIONS:
+        ad_page_size = DEFAULT_AD_ADMIN_PAGE_SIZE
     ad_users = []
     ad_total = 0
     ad_total_pages = 0
@@ -364,11 +370,11 @@ def admin_users():
                 ),
             )
             ad_total = len(all_ad_users)
-            ad_total_pages = max(1, (ad_total + AD_ADMIN_PAGE_SIZE - 1) // AD_ADMIN_PAGE_SIZE) if ad_total else 0
+            ad_total_pages = max(1, (ad_total + ad_page_size - 1) // ad_page_size) if ad_total else 0
             if ad_total_pages and ad_page > ad_total_pages:
                 ad_page = ad_total_pages
-            start = (ad_page - 1) * AD_ADMIN_PAGE_SIZE
-            ad_users = all_ad_users[start:start + AD_ADMIN_PAGE_SIZE]
+            start = (ad_page - 1) * ad_page_size
+            ad_users = all_ad_users[start:start + ad_page_size]
         except ADServiceError as exc:
             error = str(exc)
     return render_admin_users(
@@ -376,6 +382,7 @@ def admin_users():
         ad_users=ad_users,
         ad_query=ad_query,
         ad_page=ad_page,
+        ad_page_size=ad_page_size,
         ad_total=ad_total,
         ad_total_pages=ad_total_pages,
         ad_search_performed=ad_search_performed,
