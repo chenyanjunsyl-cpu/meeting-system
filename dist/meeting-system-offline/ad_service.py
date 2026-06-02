@@ -58,19 +58,27 @@ def _user_filter(username, config):
     return template.replace("{username}", escape_filter_chars(username))
 
 
-def _entry_to_user(entry, config):
-    attrs = entry.entry_attributes_as_dict
+def _attr_values(attrs, key):
+    value = attrs.get(key)
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        return list(value)
+    return [value]
+
+
+def _attrs_to_user(attrs, config):
     username = ""
     for key in ("sAMAccountName", "userPrincipalName"):
-        values = attrs.get(key) or []
+        values = _attr_values(attrs, key)
         if values:
             username = str(values[0])
             break
     display_attr = config.get("display_attr") or "displayName"
     email_attr = config.get("email_attr") or "mail"
-    display_values = attrs.get(display_attr) or attrs.get("displayName") or []
-    email_values = attrs.get(email_attr) or attrs.get("mail") or []
-    groups = attrs.get("memberOf") or []
+    display_values = _attr_values(attrs, display_attr) or _attr_values(attrs, "displayName")
+    email_values = _attr_values(attrs, email_attr) or _attr_values(attrs, "mail")
+    groups = _attr_values(attrs, "memberOf")
     admin_group = config.get("admin_group_dn", "").strip().lower()
     local_user = get_user_by_username(username) if username else None
     role = local_user["role"] if local_user else "user"
@@ -83,6 +91,10 @@ def _entry_to_user(entry, config):
         "role": role,
         "source": "ad",
     }
+
+
+def _entry_to_user(entry, config):
+    return _attrs_to_user(entry.entry_attributes_as_dict, config)
 
 
 def find_ad_user(username, config=None):
@@ -124,7 +136,7 @@ def authenticate_ad_user(username, password):
         return None
 
 
-def search_ad_users(query="", limit=30, config=None):
+def search_ad_users(query="", limit=30, config=None, page_size=100):
     config = config or get_ad_config()
     query = (query or "").strip()
     if query:
@@ -139,6 +151,23 @@ def search_ad_users(query="", limit=30, config=None):
     else:
         search_filter = "(&(objectClass=user)(sAMAccountName=*))"
     with _service_connection(config) as conn:
+        if limit is None or limit > page_size:
+            users = []
+            for item in conn.extend.standard.paged_search(
+                search_base=config["base_dn"],
+                search_filter=search_filter,
+                search_scope=SUBTREE,
+                attributes=USER_ATTRIBUTES,
+                paged_size=page_size,
+                generator=True,
+            ):
+                if item.get("type") != "searchResEntry":
+                    continue
+                users.append(_attrs_to_user(item.get("attributes", {}), config))
+                if limit is not None and len(users) >= limit:
+                    break
+            return users
+
         conn.search(
             search_base=config["base_dn"],
             search_filter=search_filter,

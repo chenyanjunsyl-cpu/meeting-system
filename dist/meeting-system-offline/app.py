@@ -2,7 +2,7 @@ import os
 import sqlite3
 from datetime import date, datetime, timedelta
 from functools import wraps
-from flask import Flask, render_template, request, redirect, url_for, session, make_response
+from flask import Flask, render_template, request, redirect, url_for, session, make_response, jsonify
 from models import (
     init_db,
     authenticate_user,
@@ -39,6 +39,8 @@ from ad_service import ADServiceError, authenticate_ad_user, is_ad_enabled, sear
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-only-change-me")
+AD_ADMIN_PAGE_SIZE_OPTIONS = [20, 50, 100]
+DEFAULT_AD_ADMIN_PAGE_SIZE = 20
 
 init_db()
 
@@ -91,14 +93,70 @@ def get_booking_start_datetime(booking):
         return None
 
 
+def parse_booking_datetime(date_value, time_value):
+    try:
+        return datetime.fromisoformat(f"{date_value}T{time_value}")
+    except (TypeError, ValueError):
+        return None
+
+
 def can_edit_booking_minutes(booking):
     start_at = get_booking_start_datetime(booking)
     return bool(start_at and datetime.now() >= start_at)
 
 
+def can_cancel_booking(booking, user):
+    start_at = get_booking_start_datetime(booking)
+    return bool(
+        booking
+        and user
+        and booking["owner"] == user.get("username")
+        and start_at
+        and datetime.now() < start_at
+    )
+
+
+def is_ten_minute_time(value):
+    try:
+        parsed = datetime.strptime(value, "%H:%M")
+    except (TypeError, ValueError):
+        return False
+    return parsed.minute % 10 == 0
+
+
 @app.context_processor
 def inject_user():
     return {"current_user": session.get("user")}
+
+
+@app.route("/api/ad/users")
+@login_required
+def api_ad_users():
+    if not is_ad_enabled():
+        return jsonify({"enabled": False, "users": []})
+
+    query = request.args.get("q", "").strip()
+    try:
+        users = search_ad_users(query=query, limit=20)
+    except ADServiceError as exc:
+        return jsonify({"enabled": True, "users": [], "error": str(exc)}), 503
+
+    payload = []
+    for user in users:
+        username = user.get("username") or ""
+        display_name = user.get("display_name") or username
+        email = user.get("email") or ""
+        if username and display_name and display_name != username:
+            label = f"{display_name} ({username})"
+        else:
+            label = username or display_name
+        payload.append({
+            "username": username,
+            "display_name": display_name,
+            "email": email,
+            "label": label,
+        })
+    return jsonify({"enabled": True, "users": payload})
 
 
 @app.route("/")
@@ -160,11 +218,13 @@ def index():
         selected_date=selected_date,
         week_start=week_start,
         week_end=week_end_day.isoformat(),
+        today=date.today().isoformat(),
         week_days=week_days,
         room_status=room_status,
         rooms=rooms,
         bookings=bookings,
         ad_people=ad_people,
+        now_datetime=datetime.now().strftime("%Y-%m-%d %H:%M"),
     )
 
 
@@ -188,6 +248,15 @@ def book():
     if start_time >= end_time:
         error = "开始时间必须早于结束时间。"
         return render_template("result.html", error=error)
+
+    if not (is_ten_minute_time(start_time) and is_ten_minute_time(end_time)):
+        return render_template("result.html", error="会议开始和结束时间必须按 10 分钟间隔选择。")
+
+    start_at = parse_booking_datetime(date_value, start_time)
+    if not start_at:
+        return render_template("result.html", error="请选择有效的会议开始时间。")
+    if start_at < datetime.now():
+        return render_template("result.html", error="会议开始时间不能早于当前时间。")
 
     room_id = parse_int(room_id)
     if room_id is None or not get_room_by_id(room_id):
@@ -258,6 +327,15 @@ def admin_update_booking(booking_id):
     if start_time >= end_time:
         return render_template("result.html", error="开始时间必须早于结束时间。")
 
+    if not (is_ten_minute_time(start_time) and is_ten_minute_time(end_time)):
+        return render_template("result.html", error="会议开始和结束时间必须按 10 分钟间隔选择。")
+
+    start_at = parse_booking_datetime(date_value, start_time)
+    if not start_at:
+        return render_template("result.html", error="请选择有效的会议开始时间。")
+    if start_at < datetime.now():
+        return render_template("result.html", error="会议开始时间不能早于当前时间。")
+
     room_id = parse_int(room_id)
     if room_id is None or not get_room_by_id(room_id):
         return render_template("result.html", error="请选择有效的会议室。")
@@ -282,7 +360,17 @@ def admin_index():
     return redirect("/admin/rooms")
 
 
-def render_admin_users(message=None, error=None, ad_users=None, ad_query=""):
+def render_admin_users(
+    message=None,
+    error=None,
+    ad_users=None,
+    ad_query="",
+    ad_page=1,
+    ad_page_size=DEFAULT_AD_ADMIN_PAGE_SIZE,
+    ad_total=0,
+    ad_total_pages=0,
+    ad_search_performed=False,
+):
     ad_config = get_ad_config()
     return render_template(
         "admin_users.html",
@@ -291,6 +379,12 @@ def render_admin_users(message=None, error=None, ad_users=None, ad_query=""):
         ad_enabled=is_ad_enabled(ad_config),
         ad_users=ad_users or [],
         ad_query=ad_query,
+        ad_page=ad_page,
+        ad_total=ad_total,
+        ad_total_pages=ad_total_pages,
+        ad_page_size=ad_page_size,
+        ad_page_size_options=AD_ADMIN_PAGE_SIZE_OPTIONS,
+        ad_search_performed=ad_search_performed,
         message=message,
         error=error,
     )
@@ -300,14 +394,45 @@ def render_admin_users(message=None, error=None, ad_users=None, ad_query=""):
 @admin_required
 def admin_users():
     ad_query = request.args.get("ad_query", "").strip()
+    ad_page = parse_int(request.args.get("ad_page")) or 1
+    if ad_page < 1:
+        ad_page = 1
+    ad_page_size = parse_int(request.args.get("ad_page_size")) or DEFAULT_AD_ADMIN_PAGE_SIZE
+    if ad_page_size not in AD_ADMIN_PAGE_SIZE_OPTIONS:
+        ad_page_size = DEFAULT_AD_ADMIN_PAGE_SIZE
     ad_users = []
+    ad_total = 0
+    ad_total_pages = 0
     error = None
-    if ad_query:
+    ad_search_performed = "ad_query" in request.args
+    if ad_search_performed:
         try:
-            ad_users = search_ad_users(ad_query)
+            all_ad_users = search_ad_users(ad_query, limit=None)
+            all_ad_users = sorted(
+                all_ad_users,
+                key=lambda user: (
+                    (user.get("display_name") or "").lower(),
+                    (user.get("username") or "").lower(),
+                ),
+            )
+            ad_total = len(all_ad_users)
+            ad_total_pages = max(1, (ad_total + ad_page_size - 1) // ad_page_size) if ad_total else 0
+            if ad_total_pages and ad_page > ad_total_pages:
+                ad_page = ad_total_pages
+            start = (ad_page - 1) * ad_page_size
+            ad_users = all_ad_users[start:start + ad_page_size]
         except ADServiceError as exc:
             error = str(exc)
-    return render_admin_users(error=error, ad_users=ad_users, ad_query=ad_query)
+    return render_admin_users(
+        error=error,
+        ad_users=ad_users,
+        ad_query=ad_query,
+        ad_page=ad_page,
+        ad_page_size=ad_page_size,
+        ad_total=ad_total,
+        ad_total_pages=ad_total_pages,
+        ad_search_performed=ad_search_performed,
+    )
 
 
 @app.route("/admin/ad/save", methods=["POST"])
@@ -599,6 +724,31 @@ def my_bookings():
         bookings=bookings,
         now_date=date.today().isoformat(),
         now_datetime=datetime.now().strftime("%Y-%m-%d %H:%M"),
+    )
+
+
+@app.route("/booking/cancel/<int:booking_id>", methods=["POST"])
+@login_required
+def cancel_my_booking(booking_id):
+    booking = get_booking_by_id(booking_id)
+    user = session.get("user")
+
+    if not booking:
+        return render_template("result.html", error="预约不存在。")
+
+    if booking["owner"] != user.get("username"):
+        return render_template("result.html", error="只能取消自己预约的会议。")
+
+    if not can_cancel_booking(booking, user):
+        return render_template("result.html", error="会议已经开始或结束，不能取消。")
+
+    delete_booking(booking_id)
+    return_to = safe_redirect_target(request.form.get("return_to") or "/my_bookings")
+    return render_template(
+        "result.html",
+        success="预约已取消。",
+        redirect_url=return_to,
+        button_text="返回",
     )
 
 
