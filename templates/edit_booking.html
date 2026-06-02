@@ -28,6 +28,14 @@
         .attendee-meta { color: #64748b; font-size: 0.82rem; line-height: 1.35; margin-top: 2px; overflow-wrap: anywhere; }
         .attendee-badge { flex: 0 0 auto; border-radius: 999px; padding: 3px 8px; background: #dbeafe; color: #1d4ed8; font-size: 0.78rem; font-weight: 700; }
         .attendee-empty { padding: 12px; color: #64748b; font-size: 0.9rem; }
+        .time-wheel { position: relative; }
+        .time-wheel-input { cursor: pointer; }
+        .time-wheel-panel { position: absolute; z-index: 30; left: 0; top: calc(100% + 6px); width: min(280px, 100%); height: 248px; display: none; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px; border: 1px solid #cbd5e1; border-radius: 14px; background: #ffffff; box-shadow: 0 18px 38px rgba(15,23,42,0.16); }
+        .time-wheel-panel.open { display: grid; }
+        .time-wheel-column { overflow-y: auto; border-radius: 10px; background: #f8fafc; scrollbar-width: thin; }
+        .time-wheel-option { width: 100%; height: 38px; border: 0; background: transparent; color: #0f172a; font-size: 1rem; font-weight: 600; cursor: pointer; }
+        .time-wheel-option:hover { background: #e0f2fe; }
+        .time-wheel-option.active { background: #dbeafe; color: #0f172a; outline: 1px solid #2563eb; }
     </style>
 </head>
 <body>
@@ -48,11 +56,23 @@
         </div>
         <div class="form-row">
             <label for="start_time">开始时间</label>
-            <input type="time" id="start_time" name="start_time" value="{{ booking.start_time }}" min="00:00" max="23:50" step="600" required>
+            <div class="time-wheel" data-time-wheel>
+                <input type="text" id="start_time" name="start_time" class="time-wheel-input" value="{{ booking.start_time }}" autocomplete="off" inputmode="none" readonly required data-time-input>
+                <div class="time-wheel-panel" data-time-panel>
+                    <div class="time-wheel-column" data-hour-list></div>
+                    <div class="time-wheel-column" data-minute-list></div>
+                </div>
+            </div>
         </div>
         <div class="form-row">
             <label for="end_time">结束时间</label>
-            <input type="time" id="end_time" name="end_time" value="{{ booking.end_time }}" min="00:00" max="23:50" step="600" required>
+            <div class="time-wheel" data-time-wheel>
+                <input type="text" id="end_time" name="end_time" class="time-wheel-input" value="{{ booking.end_time }}" autocomplete="off" inputmode="none" readonly required data-time-input>
+                <div class="time-wheel-panel" data-time-panel>
+                    <div class="time-wheel-column" data-hour-list></div>
+                    <div class="time-wheel-column" data-minute-list></div>
+                </div>
+            </div>
         </div>
         <div class="form-row">
             <label for="subject">会议主题</label>
@@ -76,6 +96,88 @@
     </form>
 </div>
 <script>
+(function () {
+    const hours = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, '0'));
+    const minutes = ['00', '10', '20', '30', '40', '50'];
+
+    function fallbackTime() {
+        const now = new Date();
+        const hour = String(now.getHours()).padStart(2, '0');
+        const minute = String(Math.floor(now.getMinutes() / 10) * 10).padStart(2, '0');
+        return { hour, minute };
+    }
+
+    function parseTime(value) {
+        const match = /^(\d{2}):(\d{2})$/.exec(value || '');
+        if (match && hours.includes(match[1]) && minutes.includes(match[2])) {
+            return { hour: match[1], minute: match[2] };
+        }
+        return fallbackTime();
+    }
+
+    function renderColumn(column, values, selected, onChoose) {
+        column.innerHTML = values.map(value => `
+            <button type="button" class="time-wheel-option${value === selected ? ' active' : ''}" data-value="${value}">
+                ${value}
+            </button>
+        `).join('');
+        column.querySelectorAll('.time-wheel-option').forEach(button => {
+            button.addEventListener('mousedown', event => {
+                event.preventDefault();
+                onChoose(button.dataset.value);
+            });
+        });
+        const active = column.querySelector('.time-wheel-option.active');
+        if (active) {
+            active.scrollIntoView({ block: 'center' });
+        }
+    }
+
+    document.querySelectorAll('[data-time-wheel]').forEach(wheel => {
+        const input = wheel.querySelector('[data-time-input]');
+        const panel = wheel.querySelector('[data-time-panel]');
+        const hourList = wheel.querySelector('[data-hour-list]');
+        const minuteList = wheel.querySelector('[data-minute-list]');
+        let selected = parseTime(input.value);
+
+        function setValue() {
+            input.value = `${selected.hour}:${selected.minute}`;
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        function render() {
+            renderColumn(hourList, hours, selected.hour, value => {
+                selected.hour = value;
+                setValue();
+                render();
+            });
+            renderColumn(minuteList, minutes, selected.minute, value => {
+                selected.minute = value;
+                setValue();
+                render();
+            });
+        }
+
+        input.addEventListener('click', () => {
+            selected = parseTime(input.value);
+            render();
+            panel.classList.add('open');
+        });
+
+        input.addEventListener('keydown', event => {
+            if (event.key === 'Escape') panel.classList.remove('open');
+        });
+    });
+
+    document.addEventListener('click', event => {
+        document.querySelectorAll('[data-time-panel].open').forEach(panel => {
+            if (!panel.closest('[data-time-wheel]').contains(event.target)) {
+                panel.classList.remove('open');
+            }
+        });
+    });
+})();
+
 (function () {
     const input = document.querySelector('[data-ad-picker="true"]');
     const menu = document.getElementById('attendees-menu');
