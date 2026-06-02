@@ -2,7 +2,7 @@ import os
 import sqlite3
 from datetime import date, datetime, timedelta
 from functools import wraps
-from flask import Flask, render_template, request, redirect, url_for, session, make_response
+from flask import Flask, render_template, request, redirect, url_for, session, make_response, jsonify
 from models import (
     init_db,
     authenticate_user,
@@ -99,6 +99,36 @@ def can_edit_booking_minutes(booking):
 @app.context_processor
 def inject_user():
     return {"current_user": session.get("user")}
+
+
+@app.route("/api/ad/users")
+@login_required
+def api_ad_users():
+    if not is_ad_enabled():
+        return jsonify({"enabled": False, "users": []})
+
+    query = request.args.get("q", "").strip()
+    try:
+        users = search_ad_users(query=query, limit=20)
+    except ADServiceError as exc:
+        return jsonify({"enabled": True, "users": [], "error": str(exc)}), 503
+
+    payload = []
+    for user in users:
+        username = user.get("username") or ""
+        display_name = user.get("display_name") or username
+        email = user.get("email") or ""
+        if username and display_name and display_name != username:
+            label = f"{display_name} ({username})"
+        else:
+            label = username or display_name
+        payload.append({
+            "username": username,
+            "display_name": display_name,
+            "email": email,
+            "label": label,
+        })
+    return jsonify({"enabled": True, "users": payload})
 
 
 @app.route("/")

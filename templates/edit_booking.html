@@ -18,6 +18,16 @@
         .button.cancel { background: #6b7280; }
         .button.cancel:hover { background: #4b5563; }
         .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 20px; }
+        .attendee-picker { position: relative; }
+        .attendee-menu { position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 6px); max-height: 260px; overflow-y: auto; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 14px; box-shadow: 0 18px 38px rgba(15,23,42,0.16); padding: 6px; display: none; }
+        .attendee-menu.open { display: block; }
+        .attendee-option { width: 100%; display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 10px 12px; border: 0; border-radius: 10px; background: transparent; color: #0f172a; text-align: left; cursor: pointer; }
+        .attendee-option:hover, .attendee-option.active { background: #eff6ff; }
+        .attendee-option.selected { color: #64748b; cursor: default; background: #f8fafc; }
+        .attendee-name { font-weight: 700; line-height: 1.35; }
+        .attendee-meta { color: #64748b; font-size: 0.82rem; line-height: 1.35; margin-top: 2px; overflow-wrap: anywhere; }
+        .attendee-badge { flex: 0 0 auto; border-radius: 999px; padding: 3px 8px; background: #dbeafe; color: #1d4ed8; font-size: 0.78rem; font-weight: 700; }
+        .attendee-empty { padding: 12px; color: #64748b; font-size: 0.9rem; }
     </style>
 </head>
 <body>
@@ -54,7 +64,10 @@
         </div>
         <div class="form-row">
             <label for="attendees">参会人员</label>
-            <input type="text" id="attendees" name="attendees" value="{{ booking.attendees }}" required>
+            <div class="attendee-picker">
+                <input type="text" id="attendees" name="attendees" value="{{ booking.attendees }}" autocomplete="off" data-ad-picker="true" required>
+                <div class="attendee-menu" id="attendees-menu"></div>
+            </div>
         </div>
         <div class="actions">
             <button type="submit" class="button">保存修改</button>
@@ -62,5 +75,163 @@
         </div>
     </form>
 </div>
+<script>
+(function () {
+    const input = document.querySelector('[data-ad-picker="true"]');
+    const menu = document.getElementById('attendees-menu');
+    if (!input || !menu) return;
+
+    let timer = null;
+    let users = [];
+    let activeIndex = -1;
+    let requestId = 0;
+
+    function escapeHtml(value) {
+        return String(value || '').replace(/[&<>"']/g, char => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        }[char]));
+    }
+
+    function splitPeople(value) {
+        return value.split(/[，,]/).map(item => item.trim()).filter(Boolean);
+    }
+
+    function selectedKeys() {
+        const keys = new Set();
+        splitPeople(input.value).forEach(item => {
+            keys.add(item.toLowerCase());
+            const match = item.match(/\(([^)]+)\)\s*$|（([^）]+)）\s*$/);
+            const username = match ? (match[1] || match[2] || '').trim() : '';
+            if (username) keys.add(username.toLowerCase());
+        });
+        return keys;
+    }
+
+    function currentTerm() {
+        const parts = input.value.split(/[，,]/);
+        return (parts[parts.length - 1] || '').trim();
+    }
+
+    function isSelected(user) {
+        const keys = selectedKeys();
+        return keys.has((user.username || '').toLowerCase())
+            || keys.has((user.display_name || '').toLowerCase())
+            || keys.has((user.label || '').toLowerCase());
+    }
+
+    function replaceCurrentTerm(label) {
+        const value = input.value;
+        const lastComma = Math.max(value.lastIndexOf(','), value.lastIndexOf('，'));
+        const prefix = lastComma >= 0 ? value.slice(0, lastComma + 1).trimEnd() + ' ' : '';
+        input.value = prefix + label + ', ';
+        input.focus();
+        hideMenu();
+        clearTimeout(timer);
+        timer = setTimeout(searchUsers, 120);
+    }
+
+    function hideMenu() {
+        menu.classList.remove('open');
+        menu.innerHTML = '';
+        activeIndex = -1;
+    }
+
+    function renderMenu() {
+        if (!users.length) {
+            menu.innerHTML = '<div class="attendee-empty">未找到匹配的 AD 用户</div>';
+            menu.classList.add('open');
+            return;
+        }
+
+        menu.innerHTML = users.map((user, index) => {
+            const selected = isSelected(user);
+            const badge = selected ? '<span class="attendee-badge">已选</span>' : '<span class="attendee-badge">选择</span>';
+            const username = user.username ? `<div class="attendee-meta">${escapeHtml(user.username)}</div>` : '';
+            const email = user.email ? `<div class="attendee-meta">${escapeHtml(user.email)}</div>` : '';
+            return `
+                <button type="button" class="attendee-option${selected ? ' selected' : ''}${index === activeIndex ? ' active' : ''}" data-index="${index}" ${selected ? 'aria-disabled="true"' : ''}>
+                    <span>
+                        <span class="attendee-name">${escapeHtml(user.display_name || user.label || user.username)}</span>
+                        ${username}
+                        ${email}
+                    </span>
+                    ${badge}
+                </button>
+            `;
+        }).join('');
+        menu.classList.add('open');
+    }
+
+    async function searchUsers() {
+        const term = currentTerm();
+        const id = ++requestId;
+        try {
+            const response = await fetch(`/api/ad/users?q=${encodeURIComponent(term)}`);
+            if (id !== requestId) return;
+            const data = await response.json();
+            users = data.users || [];
+            activeIndex = users.findIndex(user => !isSelected(user));
+            renderMenu();
+        } catch (error) {
+            if (id === requestId) {
+                users = [];
+                menu.innerHTML = '<div class="attendee-empty">AD 用户列表暂时不可用</div>';
+                menu.classList.add('open');
+            }
+        }
+    }
+
+    input.addEventListener('input', () => {
+        clearTimeout(timer);
+        timer = setTimeout(searchUsers, 220);
+    });
+
+    input.addEventListener('focus', () => {
+        clearTimeout(timer);
+        timer = setTimeout(searchUsers, 120);
+    });
+
+    input.addEventListener('keydown', event => {
+        if (!menu.classList.contains('open')) return;
+        if (!users.length) return;
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            const direction = event.key === 'ArrowDown' ? 1 : -1;
+            let next = activeIndex;
+            for (let i = 0; i < users.length; i += 1) {
+                next = (next + direction + users.length) % users.length;
+                if (!isSelected(users[next])) break;
+            }
+            activeIndex = next;
+            renderMenu();
+        }
+        if (event.key === 'Enter' && activeIndex >= 0 && users[activeIndex] && !isSelected(users[activeIndex])) {
+            event.preventDefault();
+            replaceCurrentTerm(users[activeIndex].label);
+        }
+        if (event.key === 'Escape') {
+            hideMenu();
+        }
+    });
+
+    menu.addEventListener('mousedown', event => {
+        const option = event.target.closest('.attendee-option');
+        if (!option) return;
+        event.preventDefault();
+        const user = users[Number(option.dataset.index)];
+        if (user && !isSelected(user)) {
+            replaceCurrentTerm(user.label);
+        }
+    });
+
+    document.addEventListener('click', event => {
+        if (!event.target.closest('.attendee-picker')) hideMenu();
+    });
+})();
+</script>
 </body>
 </html>
