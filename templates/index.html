@@ -44,17 +44,18 @@
         .week-header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
         .week-header h2 { margin: 0; }
         .week-range { color: #475569; font-size: 0.95rem; }
-        .week-grid { display: grid; grid-template-columns: repeat(7, minmax(150px, 1fr)); gap: 12px; }
-        .week-day { display: block; min-height: 180px; border: 1px solid #e2e8f0; border-radius: 14px; background: #f8fafc; padding: 10px; color: inherit; text-decoration: none; transition: border-color 0.16s ease, transform 0.16s ease, background 0.16s ease; }
+        .week-card { overflow: hidden; }
+        .week-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; width: 100%; }
+        .week-day { display: block; min-width: 0; min-height: 164px; border: 1px solid #e2e8f0; border-radius: 10px; background: #f8fafc; padding: 8px; color: inherit; text-decoration: none; transition: border-color 0.16s ease, transform 0.16s ease, background 0.16s ease; overflow: hidden; }
         .week-day:hover { border-color: #2563eb; background: #eff6ff; transform: translateY(-1px); }
         .week-day.today { border-color: #2563eb; background: #eff6ff; }
-        .week-date { display: flex; justify-content: space-between; gap: 8px; color: #0f172a; font-weight: 700; margin-bottom: 8px; }
-        .week-date span { color: #64748b; font-size: 0.85rem; font-weight: 600; }
-        .week-booking { border-left: 3px solid #2563eb; background: #ffffff; border-radius: 7px; padding: 6px 7px; margin-bottom: 6px; box-shadow: 0 2px 8px rgba(15,23,42,0.04); }
-        .week-booking-time { color: #1d4ed8; font-weight: 700; font-size: 0.78rem; line-height: 1.25; }
-        .week-booking-title { margin-top: 2px; color: #0f172a; font-weight: 600; font-size: 0.86rem; line-height: 1.28; overflow-wrap: anywhere; }
-        .week-booking-meta { margin-top: 2px; color: #64748b; font-size: 0.76rem; line-height: 1.35; overflow-wrap: anywhere; }
-        .week-empty { color: #94a3b8; font-size: 0.9rem; padding-top: 8px; }
+        .week-date { display: flex; justify-content: space-between; gap: 6px; color: #0f172a; font-weight: 700; margin-bottom: 7px; font-size: 0.92rem; }
+        .week-date span { color: #64748b; font-size: 0.78rem; font-weight: 600; }
+        .week-booking { border-left: 2px solid #2563eb; background: #ffffff; border-radius: 6px; padding: 5px 6px; margin-bottom: 5px; box-shadow: 0 1px 4px rgba(15,23,42,0.04); }
+        .week-booking-time { color: #1d4ed8; font-weight: 700; font-size: 0.72rem; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .week-booking-title { margin-top: 2px; color: #0f172a; font-weight: 600; font-size: 0.78rem; line-height: 1.25; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+        .week-booking-meta { margin-top: 2px; color: #64748b; font-size: 0.7rem; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .week-empty { color: #94a3b8; font-size: 0.82rem; padding-top: 8px; }
         .attendee-picker { position: relative; }
         .attendee-menu { position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 6px); max-height: 260px; overflow-y: auto; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 14px; box-shadow: 0 18px 38px rgba(15,23,42,0.16); padding: 6px; display: none; }
         .attendee-menu.open { display: block; }
@@ -76,7 +77,11 @@
         .form-alert { display: none; margin: -2px 0 16px; padding: 10px 12px; border-radius: 12px; background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; line-height: 1.5; }
         .form-alert.show { display: block; }
         @media (max-width: 1100px) {
-            .week-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+            .week-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+            .week-day { min-height: 150px; }
+        }
+        @media (max-width: 640px) {
+            .week-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
     </style>
 </head>
@@ -135,7 +140,7 @@
         </table>
     </div>
 
-    <div class="card">
+    <div class="card week-card">
         <div class="week-header">
             <h2>一周预约总览</h2>
             <div class="week-range">{{ week_start }} 至 {{ week_end }}</div>
