@@ -93,6 +93,13 @@ def get_booking_start_datetime(booking):
         return None
 
 
+def parse_booking_datetime(date_value, time_value):
+    try:
+        return datetime.fromisoformat(f"{date_value}T{time_value}")
+    except (TypeError, ValueError):
+        return None
+
+
 def can_edit_booking_minutes(booking):
     start_at = get_booking_start_datetime(booking)
     return bool(start_at and datetime.now() >= start_at)
@@ -211,6 +218,7 @@ def index():
         selected_date=selected_date,
         week_start=week_start,
         week_end=week_end_day.isoformat(),
+        today=date.today().isoformat(),
         week_days=week_days,
         room_status=room_status,
         rooms=rooms,
@@ -243,6 +251,12 @@ def book():
 
     if not (is_ten_minute_time(start_time) and is_ten_minute_time(end_time)):
         return render_template("result.html", error="会议开始和结束时间必须按 10 分钟间隔选择。")
+
+    start_at = parse_booking_datetime(date_value, start_time)
+    if not start_at:
+        return render_template("result.html", error="请选择有效的会议开始时间。")
+    if start_at < datetime.now():
+        return render_template("result.html", error="会议开始时间不能早于当前时间。")
 
     room_id = parse_int(room_id)
     if room_id is None or not get_room_by_id(room_id):
@@ -315,6 +329,12 @@ def admin_update_booking(booking_id):
 
     if not (is_ten_minute_time(start_time) and is_ten_minute_time(end_time)):
         return render_template("result.html", error="会议开始和结束时间必须按 10 分钟间隔选择。")
+
+    start_at = parse_booking_datetime(date_value, start_time)
+    if not start_at:
+        return render_template("result.html", error="请选择有效的会议开始时间。")
+    if start_at < datetime.now():
+        return render_template("result.html", error="会议开始时间不能早于当前时间。")
 
     room_id = parse_int(room_id)
     if room_id is None or not get_room_by_id(room_id):
