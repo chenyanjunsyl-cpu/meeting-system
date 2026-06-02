@@ -31,6 +31,8 @@
         .status.booked { color: #b91c1c; }
         .button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 18px; background: #2563eb; color: #ffffff; text-decoration: none; border-radius: 14px; border: none; cursor: pointer; transition: transform 0.16s ease, background 0.16s ease; }
         .button:hover { background: #1d4ed8; transform: translateY(-1px); }
+        .button.cancel { background: #dc2626; padding: 8px 12px; font-size: 0.88rem; }
+        .button.cancel:hover { background: #b91c1c; }
         .form-row { margin-bottom: 16px; }
         label { display: block; margin-bottom: 8px; font-size: 0.95rem; color: #475569; }
         input, select { width: 100%; padding: 12px 14px; border: 1px solid #cbd5e1; border-radius: 14px; background: #f8fafc; color: #0f172a; }
@@ -161,16 +163,30 @@
                     <th>主题</th>
                     <th>申请人</th>
                     <th>参会人员</th>
+                    {% if current_user %}<th>操作</th>{% endif %}
                 </tr>
                 </thead>
                 <tbody>
                 {% for booking in bookings %}
+                    {% set start_datetime = booking.date ~ " " ~ booking.start_time %}
                     <tr>
                         <td>{{ booking.room_name }}</td>
                         <td>{{ booking.start_time }} - {{ booking.end_time }}</td>
                         <td>{{ booking.subject }}</td>
                         <td>{{ booking.owner }}</td>
                         <td>{{ booking.attendees }}</td>
+                        {% if current_user %}
+                            <td>
+                                {% if booking.owner == current_user.username and start_datetime > now_datetime %}
+                                    <form method="post" action="/booking/cancel/{{ booking.booking_id }}" onsubmit="return confirm('确定取消这个会议预约吗？');">
+                                        <input type="hidden" name="return_to" value="/?start={{ week_start }}&date={{ selected_date }}#day-detail">
+                                        <button type="submit" class="button cancel">取消预约</button>
+                                    </form>
+                                {% else %}
+                                    <span style="color:#94a3b8;">-</span>
+                                {% endif %}
+                            </td>
+                        {% endif %}
                     </tr>
                 {% endfor %}
                 </tbody>
@@ -199,11 +215,11 @@
                 </div>
                 <div class="form-row">
                     <label for="start_time">开始时间</label>
-                    <input type="time" id="start_time" name="start_time" required>
+                    <input type="time" id="start_time" name="start_time" step="600" required>
                 </div>
                 <div class="form-row">
                     <label for="end_time">结束时间</label>
-                    <input type="time" id="end_time" name="end_time" required>
+                    <input type="time" id="end_time" name="end_time" step="600" required>
                 </div>
                 <div class="form-row">
                     <label for="subject">会议主题</label>

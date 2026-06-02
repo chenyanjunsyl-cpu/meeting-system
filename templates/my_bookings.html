@@ -21,6 +21,8 @@
         .button.back:hover { background: #4b5563; }
         .button.edit { background: #7c3aed; padding: 8px 14px; font-size: 0.9rem; }
         .button.edit:hover { background: #6d28d9; }
+        .button.cancel { background: #dc2626; padding: 8px 14px; font-size: 0.9rem; margin-top: 8px; }
+        .button.cancel:hover { background: #b91c1c; }
         .button.disabled { background: #cbd5e1; color: #64748b; cursor: not-allowed; padding: 8px 14px; font-size: 0.9rem; }
         .button.disabled:hover { background: #cbd5e1; transform: none; }
         
@@ -104,6 +106,10 @@
                                 </a>
                             {% else %}
                                 <span class="button disabled" title="会议开始后才能填写会议纪要">未开始</span>
+                                <form method="post" action="/booking/cancel/{{ booking.booking_id }}" onsubmit="return confirm('确定取消这个会议预约吗？');">
+                                    <input type="hidden" name="return_to" value="/my_bookings">
+                                    <button type="submit" class="button cancel">取消预约</button>
+                                </form>
                             {% endif %}
                         </td>
                     </tr>

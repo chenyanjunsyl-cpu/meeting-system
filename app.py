@@ -98,6 +98,25 @@ def can_edit_booking_minutes(booking):
     return bool(start_at and datetime.now() >= start_at)
 
 
+def can_cancel_booking(booking, user):
+    start_at = get_booking_start_datetime(booking)
+    return bool(
+        booking
+        and user
+        and booking["owner"] == user.get("username")
+        and start_at
+        and datetime.now() < start_at
+    )
+
+
+def is_ten_minute_time(value):
+    try:
+        parsed = datetime.strptime(value, "%H:%M")
+    except (TypeError, ValueError):
+        return False
+    return parsed.minute % 10 == 0
+
+
 @app.context_processor
 def inject_user():
     return {"current_user": session.get("user")}
@@ -197,6 +216,7 @@ def index():
         rooms=rooms,
         bookings=bookings,
         ad_people=ad_people,
+        now_datetime=datetime.now().strftime("%Y-%m-%d %H:%M"),
     )
 
 
@@ -220,6 +240,9 @@ def book():
     if start_time >= end_time:
         error = "开始时间必须早于结束时间。"
         return render_template("result.html", error=error)
+
+    if not (is_ten_minute_time(start_time) and is_ten_minute_time(end_time)):
+        return render_template("result.html", error="会议开始和结束时间必须按 10 分钟间隔选择。")
 
     room_id = parse_int(room_id)
     if room_id is None or not get_room_by_id(room_id):
@@ -289,6 +312,9 @@ def admin_update_booking(booking_id):
 
     if start_time >= end_time:
         return render_template("result.html", error="开始时间必须早于结束时间。")
+
+    if not (is_ten_minute_time(start_time) and is_ten_minute_time(end_time)):
+        return render_template("result.html", error="会议开始和结束时间必须按 10 分钟间隔选择。")
 
     room_id = parse_int(room_id)
     if room_id is None or not get_room_by_id(room_id):
@@ -678,6 +704,31 @@ def my_bookings():
         bookings=bookings,
         now_date=date.today().isoformat(),
         now_datetime=datetime.now().strftime("%Y-%m-%d %H:%M"),
+    )
+
+
+@app.route("/booking/cancel/<int:booking_id>", methods=["POST"])
+@login_required
+def cancel_my_booking(booking_id):
+    booking = get_booking_by_id(booking_id)
+    user = session.get("user")
+
+    if not booking:
+        return render_template("result.html", error="预约不存在。")
+
+    if booking["owner"] != user.get("username"):
+        return render_template("result.html", error="只能取消自己预约的会议。")
+
+    if not can_cancel_booking(booking, user):
+        return render_template("result.html", error="会议已经开始或结束，不能取消。")
+
+    delete_booking(booking_id)
+    return_to = safe_redirect_target(request.form.get("return_to") or "/my_bookings")
+    return render_template(
+        "result.html",
+        success="预约已取消。",
+        redirect_url=return_to,
+        button_text="返回",
     )
 
 
