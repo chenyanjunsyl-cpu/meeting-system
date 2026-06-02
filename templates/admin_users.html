@@ -35,6 +35,22 @@
         .hint { color: #64748b; line-height: 1.65; margin-top: 8px; }
         .section-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
         .section-title h2 { margin-bottom: 8px; }
+        .table-wrap { overflow-x: auto; }
+        .check-cell { width: 54px; text-align: center; }
+        .check-cell input { width: auto; transform: scale(1.12); cursor: pointer; }
+        .ad-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 14px 0 4px; color: #475569; }
+        .pagination { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+        .page-link { display: inline-flex; min-width: 38px; justify-content: center; padding: 8px 10px; border-radius: 10px; border: 1px solid #cbd5e1; color: #0f172a; background: #fff; text-decoration: none; }
+        .page-link.active { background: #2563eb; border-color: #2563eb; color: #fff; }
+        .page-link.disabled { color: #94a3b8; cursor: not-allowed; background: #f8fafc; }
+        .selected-panel { margin-top: 18px; padding: 16px; border-radius: 16px; border: 1px solid #cbd5e1; background: #f8fafc; }
+        .selected-title { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+        .selected-title strong { color: #0f172a; }
+        .selected-list { display: flex; flex-wrap: wrap; gap: 8px; min-height: 36px; }
+        .selected-chip { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 8px 10px; border-radius: 999px; background: #dbeafe; color: #1e3a8a; font-weight: 700; }
+        .selected-chip small { color: #475569; font-weight: 600; }
+        .chip-remove { border: 0; width: 22px; height: 22px; border-radius: 999px; cursor: pointer; background: rgba(30,58,138,0.12); color: #1e3a8a; }
+        .empty-selected { color: #64748b; line-height: 36px; }
     </style>
 </head>
 <body>
@@ -131,48 +147,94 @@
             <div class="inline-form">
                 <div class="form-row">
                     <label for="ad_query">搜索 AD 用户</label>
-                    <input id="ad_query" name="ad_query" value="{{ ad_query }}" placeholder="输入姓名、账号或邮箱">
+                    <input id="ad_query" name="ad_query" value="{{ ad_query }}" placeholder="留空搜索全部 AD 用户，或输入姓名、账号、邮箱">
                 </div>
                 <div class="form-row">
                     <button type="submit" class="button">搜索</button>
                 </div>
             </div>
         </form>
+        <p class="hint">输入框留空后点击搜索，可显示全部 AD 域用户；勾选用户后会在本区域底部汇总，翻页时选择会保留在当前浏览器会话中。</p>
         {% if ad_users %}
-            <table>
-                <thead>
-                <tr>
-                    <th>账号</th>
-                    <th>姓名</th>
-                    <th>邮箱</th>
-                    <th>当前权限</th>
-                    <th>分配权限</th>
-                </tr>
-                </thead>
-                <tbody>
-                {% for user in ad_users %}
+            <div class="ad-summary">
+                <span>共 {{ ad_total }} 个 AD 用户，当前第 {{ ad_page }} / {{ ad_total_pages }} 页，每页 {{ ad_page_size }} 条。</span>
+                <button type="button" class="button" id="select-visible-users" style="background:#0f766e;">勾选当前页</button>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
                     <tr>
-                        <td>{{ user.username }}</td>
-                        <td>{{ user.display_name }}</td>
-                        <td>{{ user.email or "-" }}</td>
-                        <td><span class="badge {{ user.role }}">{{ "管理员" if user.role == "admin" else "普通用户" }}</span></td>
-                        <td>
-                            <form method="post" action="/admin/ad/role" class="row-actions">
-                                <input type="hidden" name="username" value="{{ user.username }}">
-                                <select name="role" style="width: 140px;">
-                                    <option value="user" {% if user.role == "user" %}selected{% endif %}>普通用户</option>
-                                    <option value="admin" {% if user.role == "admin" %}selected{% endif %}>管理员</option>
-                                </select>
-                                <button type="submit" class="button" style="background:#0f766e;">保存</button>
-                            </form>
-                        </td>
+                        <th class="check-cell"><input type="checkbox" id="ad-select-page" title="选择当前页"></th>
+                        <th>账号</th>
+                        <th>姓名</th>
+                        <th>邮箱</th>
+                        <th>当前权限</th>
+                        <th>分配权限</th>
                     </tr>
-                {% endfor %}
-                </tbody>
-            </table>
-        {% elif ad_query %}
+                    </thead>
+                    <tbody>
+                    {% for user in ad_users %}
+                        <tr>
+                            <td class="check-cell">
+                                <input
+                                    type="checkbox"
+                                    class="ad-user-check"
+                                    data-username="{{ user.username }}"
+                                    data-display="{{ user.display_name }}"
+                                    data-email="{{ user.email or '' }}"
+                                    data-role="{{ user.role }}"
+                                >
+                            </td>
+                            <td>{{ user.username }}</td>
+                            <td>{{ user.display_name }}</td>
+                            <td>{{ user.email or "-" }}</td>
+                            <td><span class="badge {{ user.role }}">{{ "管理员" if user.role == "admin" else "普通用户" }}</span></td>
+                            <td>
+                                <form method="post" action="/admin/ad/role" class="row-actions">
+                                    <input type="hidden" name="username" value="{{ user.username }}">
+                                    <select name="role" style="width: 140px;">
+                                        <option value="user" {% if user.role == "user" %}selected{% endif %}>普通用户</option>
+                                        <option value="admin" {% if user.role == "admin" %}selected{% endif %}>管理员</option>
+                                    </select>
+                                    <button type="submit" class="button" style="background:#0f766e;">保存</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% if ad_total_pages > 1 %}
+                {% set page_start = ad_page - 2 if ad_page - 2 > 1 else 1 %}
+                {% set page_end = ad_page + 2 if ad_page + 2 < ad_total_pages else ad_total_pages %}
+                <div class="pagination">
+                    {% if ad_page > 1 %}
+                        <a class="page-link" href="{{ url_for('admin_users', ad_query=ad_query, ad_page=ad_page - 1) }}">上一页</a>
+                    {% else %}
+                        <span class="page-link disabled">上一页</span>
+                    {% endif %}
+                    {% for page_no in range(page_start, page_end + 1) %}
+                        <a class="page-link {% if page_no == ad_page %}active{% endif %}" href="{{ url_for('admin_users', ad_query=ad_query, ad_page=page_no) }}">{{ page_no }}</a>
+                    {% endfor %}
+                    {% if ad_page < ad_total_pages %}
+                        <a class="page-link" href="{{ url_for('admin_users', ad_query=ad_query, ad_page=ad_page + 1) }}">下一页</a>
+                    {% else %}
+                        <span class="page-link disabled">下一页</span>
+                    {% endif %}
+                </div>
+            {% endif %}
+        {% elif ad_search_performed %}
             <p class="hint">没有找到匹配的 AD 用户。</p>
         {% endif %}
+        <div class="selected-panel">
+            <div class="selected-title">
+                <strong>已选择 AD 用户（<span id="selected-count">0</span>）</strong>
+                <button type="button" class="button" id="clear-selected-users" style="background:#6b7280;">清空选择</button>
+            </div>
+            <div class="selected-list" id="selected-users-list">
+                <span class="empty-selected">暂未选择用户。</span>
+            </div>
+        </div>
     </div>
 
     <div class="card">
@@ -245,5 +307,147 @@
         </table>
     </div>
 </div>
+<script>
+(function () {
+    const storageKey = 'meeting-system-selected-ad-users';
+    const checks = Array.from(document.querySelectorAll('.ad-user-check'));
+    const selectPage = document.getElementById('ad-select-page');
+    const selectVisibleButton = document.getElementById('select-visible-users');
+    const clearButton = document.getElementById('clear-selected-users');
+    const selectedList = document.getElementById('selected-users-list');
+    const selectedCount = document.getElementById('selected-count');
+
+    function loadSelected() {
+        try {
+            return JSON.parse(sessionStorage.getItem(storageKey) || '{}');
+        } catch (error) {
+            return {};
+        }
+    }
+
+    function saveSelected(selected) {
+        sessionStorage.setItem(storageKey, JSON.stringify(selected));
+    }
+
+    function escapeHtml(value) {
+        return String(value || '').replace(/[&<>"']/g, char => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        }[char]));
+    }
+
+    function checkboxUser(check) {
+        return {
+            username: check.dataset.username || '',
+            display_name: check.dataset.display || check.dataset.username || '',
+            email: check.dataset.email || '',
+            role: check.dataset.role || 'user'
+        };
+    }
+
+    function updatePageChecks(selected) {
+        checks.forEach(check => {
+            check.checked = Boolean(selected[check.dataset.username]);
+        });
+        if (selectPage) {
+            selectPage.checked = checks.length > 0 && checks.every(check => check.checked);
+            selectPage.indeterminate = checks.some(check => check.checked) && !selectPage.checked;
+        }
+    }
+
+    function renderSelected() {
+        const selected = loadSelected();
+        const users = Object.values(selected);
+        selectedCount.textContent = users.length;
+
+        if (!users.length) {
+            selectedList.innerHTML = '<span class="empty-selected">暂未选择用户。</span>';
+            updatePageChecks(selected);
+            return;
+        }
+
+        users.sort((a, b) => (a.display_name || a.username).localeCompare(b.display_name || b.username, 'zh-CN'));
+        selectedList.innerHTML = users.map(user => {
+            const email = user.email ? `<small>${escapeHtml(user.email)}</small>` : '';
+            return `
+                <span class="selected-chip" title="${escapeHtml(user.username)}">
+                    ${escapeHtml(user.display_name || user.username)}
+                    ${email}
+                    <button type="button" class="chip-remove" data-remove="${escapeHtml(user.username)}" aria-label="移除">×</button>
+                </span>
+            `;
+        }).join('');
+        updatePageChecks(selected);
+    }
+
+    checks.forEach(check => {
+        check.addEventListener('change', () => {
+            const selected = loadSelected();
+            const user = checkboxUser(check);
+            if (!user.username) return;
+            if (check.checked) {
+                selected[user.username] = user;
+            } else {
+                delete selected[user.username];
+            }
+            saveSelected(selected);
+            renderSelected();
+        });
+    });
+
+    if (selectPage) {
+        selectPage.addEventListener('change', () => {
+            const selected = loadSelected();
+            checks.forEach(check => {
+                const user = checkboxUser(check);
+                if (!user.username) return;
+                check.checked = selectPage.checked;
+                if (selectPage.checked) {
+                    selected[user.username] = user;
+                } else {
+                    delete selected[user.username];
+                }
+            });
+            saveSelected(selected);
+            renderSelected();
+        });
+    }
+
+    if (selectVisibleButton) {
+        selectVisibleButton.addEventListener('click', () => {
+            const selected = loadSelected();
+            checks.forEach(check => {
+                const user = checkboxUser(check);
+                if (!user.username) return;
+                check.checked = true;
+                selected[user.username] = user;
+            });
+            saveSelected(selected);
+            renderSelected();
+        });
+    }
+
+    if (clearButton) {
+        clearButton.addEventListener('click', () => {
+            saveSelected({});
+            renderSelected();
+        });
+    }
+
+    selectedList.addEventListener('click', event => {
+        const button = event.target.closest('.chip-remove');
+        if (!button) return;
+        const selected = loadSelected();
+        delete selected[button.dataset.remove];
+        saveSelected(selected);
+        renderSelected();
+    });
+
+    renderSelected();
+})();
+</script>
 </body>
 </html>

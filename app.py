@@ -39,6 +39,7 @@ from ad_service import ADServiceError, authenticate_ad_user, is_ad_enabled, sear
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-only-change-me")
+AD_ADMIN_PAGE_SIZE = 20
 
 init_db()
 
@@ -312,7 +313,16 @@ def admin_index():
     return redirect("/admin/rooms")
 
 
-def render_admin_users(message=None, error=None, ad_users=None, ad_query=""):
+def render_admin_users(
+    message=None,
+    error=None,
+    ad_users=None,
+    ad_query="",
+    ad_page=1,
+    ad_total=0,
+    ad_total_pages=0,
+    ad_search_performed=False,
+):
     ad_config = get_ad_config()
     return render_template(
         "admin_users.html",
@@ -321,6 +331,11 @@ def render_admin_users(message=None, error=None, ad_users=None, ad_query=""):
         ad_enabled=is_ad_enabled(ad_config),
         ad_users=ad_users or [],
         ad_query=ad_query,
+        ad_page=ad_page,
+        ad_total=ad_total,
+        ad_total_pages=ad_total_pages,
+        ad_page_size=AD_ADMIN_PAGE_SIZE,
+        ad_search_performed=ad_search_performed,
         message=message,
         error=error,
     )
@@ -330,14 +345,41 @@ def render_admin_users(message=None, error=None, ad_users=None, ad_query=""):
 @admin_required
 def admin_users():
     ad_query = request.args.get("ad_query", "").strip()
+    ad_page = parse_int(request.args.get("ad_page")) or 1
+    if ad_page < 1:
+        ad_page = 1
     ad_users = []
+    ad_total = 0
+    ad_total_pages = 0
     error = None
-    if ad_query:
+    ad_search_performed = "ad_query" in request.args
+    if ad_search_performed:
         try:
-            ad_users = search_ad_users(ad_query)
+            all_ad_users = search_ad_users(ad_query, limit=None)
+            all_ad_users = sorted(
+                all_ad_users,
+                key=lambda user: (
+                    (user.get("display_name") or "").lower(),
+                    (user.get("username") or "").lower(),
+                ),
+            )
+            ad_total = len(all_ad_users)
+            ad_total_pages = max(1, (ad_total + AD_ADMIN_PAGE_SIZE - 1) // AD_ADMIN_PAGE_SIZE) if ad_total else 0
+            if ad_total_pages and ad_page > ad_total_pages:
+                ad_page = ad_total_pages
+            start = (ad_page - 1) * AD_ADMIN_PAGE_SIZE
+            ad_users = all_ad_users[start:start + AD_ADMIN_PAGE_SIZE]
         except ADServiceError as exc:
             error = str(exc)
-    return render_admin_users(error=error, ad_users=ad_users, ad_query=ad_query)
+    return render_admin_users(
+        error=error,
+        ad_users=ad_users,
+        ad_query=ad_query,
+        ad_page=ad_page,
+        ad_total=ad_total,
+        ad_total_pages=ad_total_pages,
+        ad_search_performed=ad_search_performed,
+    )
 
 
 @app.route("/admin/ad/save", methods=["POST"])
