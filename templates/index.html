@@ -31,6 +31,7 @@
         .status.booked { color: #b91c1c; }
         .button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 18px; background: #2563eb; color: #ffffff; text-decoration: none; border-radius: 14px; border: none; cursor: pointer; transition: transform 0.16s ease, background 0.16s ease; }
         .button:hover { background: #1d4ed8; transform: translateY(-1px); }
+        .button:disabled { background: #cbd5e1; color: #64748b; cursor: not-allowed; transform: none; }
         .button.cancel { background: #dc2626; padding: 8px 12px; font-size: 0.88rem; }
         .button.cancel:hover { background: #b91c1c; }
         .form-row { margin-bottom: 16px; }
@@ -72,6 +73,8 @@
         .time-wheel-option { width: 100%; height: 38px; border: 0; background: transparent; color: #0f172a; font-size: 1rem; font-weight: 600; cursor: pointer; }
         .time-wheel-option:hover { background: #e0f2fe; }
         .time-wheel-option.active { background: #dbeafe; color: #0f172a; outline: 1px solid #2563eb; }
+        .form-alert { display: none; margin: -2px 0 16px; padding: 10px 12px; border-radius: 12px; background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; line-height: 1.5; }
+        .form-alert.show { display: block; }
         @media (max-width: 1100px) {
             .week-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
         }
@@ -208,7 +211,8 @@
         <div class="card">
             <h2>预约表单</h2>
         {% if current_user %}
-            <form method="post" action="/book">
+            <form method="post" action="/book" id="booking-form">
+                <div class="form-alert" id="booking-time-alert"></div>
                 <div class="form-row">
                     <label for="room_id">选择会议室</label>
                     <select id="room_id" name="room_id" required>
@@ -256,7 +260,7 @@
                         <div class="attendee-menu" id="attendees-menu"></div>
                     </div>
                 </div>
-                <button type="submit" class="button">提交预约</button>
+                <button type="submit" class="button" id="booking-submit">提交预约</button>
             </form>
         {% else %}
             <p class="note">请先登录后才可以进行会议室预约。<a href="/login" class="button" style="padding:8px 12px; display:inline-block;">登录</a></p>
@@ -344,6 +348,78 @@
                 panel.classList.remove('open');
             }
         });
+    });
+})();
+
+(function () {
+    const form = document.getElementById('booking-form');
+    if (!form) return;
+
+    const dateInput = form.querySelector('input[name="date"]');
+    const startInput = form.querySelector('input[name="start_time"]');
+    const endInput = form.querySelector('input[name="end_time"]');
+    const alertBox = document.getElementById('booking-time-alert');
+    const submitButton = document.getElementById('booking-submit');
+
+    function parseDateTime(dateValue, timeValue) {
+        if (!dateValue || !timeValue) return null;
+        const parsed = new Date(`${dateValue}T${timeValue}:00`);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    function showError(message) {
+        alertBox.textContent = message;
+        alertBox.classList.add('show');
+        submitButton.disabled = true;
+        submitButton.classList.add('muted');
+    }
+
+    function clearError() {
+        alertBox.textContent = '';
+        alertBox.classList.remove('show');
+        submitButton.disabled = false;
+        submitButton.classList.remove('muted');
+    }
+
+    function validateTime() {
+        if (!dateInput.value || !startInput.value) {
+            clearError();
+            return true;
+        }
+
+        const startAt = parseDateTime(dateInput.value, startInput.value);
+        if (!startAt) {
+            showError('请选择有效的会议开始时间。');
+            return false;
+        }
+
+        if (startAt < new Date()) {
+            showError('会议开始时间不能早于当前时间。');
+            return false;
+        }
+
+        if (!endInput.value) {
+            clearError();
+            return true;
+        }
+
+        if (startInput.value >= endInput.value) {
+            showError('开始时间必须早于结束时间。');
+            return false;
+        }
+
+        clearError();
+        return true;
+    }
+
+    [dateInput, startInput, endInput].forEach(input => {
+        input.addEventListener('change', validateTime);
+    });
+
+    form.addEventListener('submit', event => {
+        if (!validateTime()) {
+            event.preventDefault();
+        }
     });
 })();
 
