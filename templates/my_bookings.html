@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>我的预约 - 会议室预定系统</title>
+    <title>我的会议 - 会议室预定系统</title>
     <style>
         :root {
             font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
@@ -32,99 +32,141 @@
         tbody tr:nth-child(odd) { background: #f8fafc; }
         tbody tr { height: auto; }
         tbody tr td { vertical-align: top; }
+        tbody tr.meeting-ended { background: #f1f5f9; color: #94a3b8; }
+        tbody tr.meeting-ended td { border-bottom-color: #e5e7eb; }
+        tbody tr.meeting-ended .minutes-preview { background: #e5e7eb; color: #64748b; }
         
         .status-badge { display: inline-block; padding: 6px 12px; border-radius: 12px; font-size: 0.85rem; font-weight: 600; }
         .status-future { background: #dbeafe; color: #0f4a99; }
         .status-active { background: #dcfce7; color: #166534; }
         .status-past { background: #f3e8ff; color: #6b21a8; }
+        .relation-badge { display: inline-block; margin-top: 8px; padding: 5px 10px; border-radius: 999px; font-size: 0.78rem; font-weight: 700; background: #e0f2fe; color: #075985; }
+        .relation-badge.attendee { background: #fef3c7; color: #92400e; }
+        .relation-badge.both { background: #ede9fe; color: #6d28d9; }
         
         .minutes-preview { max-height: 80px; overflow: hidden; color: #475569; font-size: 0.9rem; line-height: 1.5; background: #f8fafc; padding: 10px 12px; border-radius: 8px; margin-top: 4px; }
         .no-minutes { color: #9ca3af; font-style: italic; }
         
         .empty-state { text-align: center; color: #475569; padding: 60px 20px; }
+        .section-empty { color: #64748b; padding: 20px 0 4px; }
+        .section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+        .section-heading h2 { margin: 0; font-size: 1.35rem; }
+        .section-heading span { color: #64748b; font-size: 0.95rem; }
         .empty-state-icon { font-size: 4rem; margin-bottom: 20px; }
     </style>
 </head>
 <body>
+{% macro meeting_table(rows, empty_text) %}
+    {% if rows %}
+        <table>
+            <thead>
+            <tr>
+                <th>日期</th>
+                <th>会议室</th>
+                <th>时间</th>
+                <th>主题</th>
+                <th>申请人</th>
+                <th>参会人员</th>
+                <th>纪要</th>
+                <th>操作</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for booking in rows %}
+                <tr class="{% if booking.is_ended %}meeting-ended{% endif %}">
+                    <td>
+                        <strong>{{ booking.date }}</strong>
+                        <br>
+                        <span class="status-badge {% if booking.is_ended %}status-past{% elif booking.can_write_minutes %}status-active{% else %}status-future{% endif %}">
+                            {% if booking.is_ended %}已结束{% elif booking.can_write_minutes %}进行中{% else %}未开始{% endif %}
+                        </span>
+                        <br>
+                        <span class="relation-badge {{ booking.relation }}">
+                            {% if booking.relation == "attendee" %}我参加的{% elif booking.relation == "both" %}我预约并参加{% else %}我预约的{% endif %}
+                        </span>
+                    </td>
+                    <td>
+                        <strong>{{ booking.room_name }}</strong>
+                        <br>
+                        <span style="color: #6b7280; font-size: 0.9rem;">{{ booking.location }}</span>
+                    </td>
+                    <td>{{ booking.start_time }} - {{ booking.end_time }}</td>
+                    <td>{{ booking.subject }}</td>
+                    <td>{{ booking.owner_display or booking.owner }}</td>
+                    <td style="color: #6b7280; font-size: 0.9rem;">{{ booking.attendees }}</td>
+                    <td>
+                        {% if booking.minutes %}
+                            <div class="minutes-preview">{{ booking.minutes[:100] }}{% if booking.minutes|length > 100 %}...{% endif %}</div>
+                        {% else %}
+                            <span class="no-minutes">未记录</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if booking.is_owner and booking.can_write_minutes %}
+                            <a href="/booking/minutes/{{ booking.booking_id }}" class="button edit">
+                                {% if booking.minutes %}编辑{% else %}记录{% endif %}
+                            </a>
+                        {% elif booking.is_owner and not booking.can_write_minutes %}
+                            <span class="button disabled" title="会议开始后才能填写会议纪要">未开始</span>
+                            <form method="post" action="/booking/cancel/{{ booking.booking_id }}" onsubmit="return confirm('确定取消这个会议预约吗？');">
+                                <input type="hidden" name="return_to" value="/my_bookings">
+                                <button type="submit" class="button cancel">取消预约</button>
+                            </form>
+                        {% else %}
+                            <span class="button disabled" title="参会会议仅可查看">仅查看</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="section-empty">{{ empty_text }}</div>
+    {% endif %}
+{% endmacro %}
 <div class="container">
     <div class="header">
         <div>
-            <h1>我的预约</h1>
-            <p style="margin: 8px 0 0; color: #475569;">管理你的会议室预约和会议纪要</p>
+            <h1>我的会议</h1>
+            <p style="margin: 8px 0 0; color: #475569;">查看你预约的会议、需要参加的会议和会议纪要</p>
         </div>
         <a href="/" class="button back">返回首页</a>
     </div>
 
-    <div class="card">
-        {% if bookings %}
-            <p style="color: #475569; margin-bottom: 16px;">共 <strong>{{ bookings|length }}</strong> 个预约</p>
-            <table>
-                <thead>
-                <tr>
-                    <th>日期</th>
-                    <th>会议室</th>
-                    <th>时间</th>
-                    <th>主题</th>
-                    <th>参会人员</th>
-                    <th>纪要</th>
-                    <th>操作</th>
-                </tr>
-                </thead>
-                <tbody>
-                {% for booking in bookings %}
-                    {% set start_datetime = booking.date ~ " " ~ booking.start_time %}
-                    {% set end_datetime = booking.date ~ " " ~ booking.end_time %}
-                    {% set can_write_minutes = start_datetime <= now_datetime %}
-                    {% set is_ended = end_datetime <= now_datetime %}
-                    <tr>
-                        <td>
-                            <strong>{{ booking.date }}</strong>
-                            <br>
-                            <span class="status-badge {% if is_ended %}status-past{% elif can_write_minutes %}status-active{% else %}status-future{% endif %}">
-                                {% if is_ended %}已结束{% elif can_write_minutes %}进行中{% else %}未开始{% endif %}
-                            </span>
-                        </td>
-                        <td>
-                            <strong>{{ booking.room_name }}</strong>
-                            <br>
-                            <span style="color: #6b7280; font-size: 0.9rem;">{{ booking.location }}</span>
-                        </td>
-                        <td>{{ booking.start_time }} - {{ booking.end_time }}</td>
-                        <td>{{ booking.subject }}</td>
-                        <td style="color: #6b7280; font-size: 0.9rem;">{{ booking.attendees }}</td>
-                        <td>
-                            {% if booking.minutes %}
-                                <div class="minutes-preview">{{ booking.minutes[:100] }}{% if booking.minutes|length > 100 %}...{% endif %}</div>
-                            {% else %}
-                                <span class="no-minutes">未记录</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if can_write_minutes %}
-                                <a href="/booking/minutes/{{ booking.booking_id }}" class="button edit">
-                                    {% if booking.minutes %}编辑{% else %}记录{% endif %}
-                                </a>
-                            {% else %}
-                                <span class="button disabled" title="会议开始后才能填写会议纪要">未开始</span>
-                                <form method="post" action="/booking/cancel/{{ booking.booking_id }}" onsubmit="return confirm('确定取消这个会议预约吗？');">
-                                    <input type="hidden" name="return_to" value="/my_bookings">
-                                    <button type="submit" class="button cancel">取消预约</button>
-                                </form>
-                            {% endif %}
-                        </td>
-                    </tr>
-                {% endfor %}
-                </tbody>
-            </table>
-        {% else %}
+    {% if bookings %}
+        <div class="card">
+            <div class="section-heading">
+                <h2>我预约的</h2>
+                <span>{{ owned_bookings|length }} 个会议</span>
+            </div>
+            {{ meeting_table(owned_bookings, "暂无自己预约的会议。") }}
+        </div>
+
+        <div class="card">
+            <div class="section-heading">
+                <h2>待参加的</h2>
+                <span>{{ pending_attendee_bookings|length }} 个会议</span>
+            </div>
+            {{ meeting_table(pending_attendee_bookings, "暂无待参加的会议。") }}
+        </div>
+
+        <div class="card">
+            <div class="section-heading">
+                <h2>已参加的</h2>
+                <span>{{ attended_bookings|length }} 个会议</span>
+            </div>
+            {{ meeting_table(attended_bookings, "暂无已参加的会议。") }}
+        </div>
+    {% else %}
+        <div class="card">
             <div class="empty-state">
                 <div class="empty-state-icon">📭</div>
-                <p style="font-size: 1.1rem; margin: 0 0 8px;">还没有预约</p>
+                <p style="font-size: 1.1rem; margin: 0 0 8px;">还没有相关会议</p>
                 <p style="margin-top: 8px;">回到首页创建新的会议室预约吧</p>
                 <a href="/" class="button" style="margin-top: 20px;">立即预约</a>
             </div>
-        {% endif %}
-    </div>
+        </div>
+    {% endif %}
 </div>
 
 </body>

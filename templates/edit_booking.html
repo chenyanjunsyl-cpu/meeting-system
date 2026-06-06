@@ -89,7 +89,7 @@
         <div class="form-row">
             <label for="attendees">参会人员</label>
             <div class="attendee-picker">
-                <input type="text" id="attendees" name="attendees" value="{{ booking.attendees }}" autocomplete="off" data-ad-picker="true" required>
+                <input type="text" id="attendees" name="attendees" value="{{ booking.attendees }}" placeholder="只能选择后台已配置用户，用逗号分隔" autocomplete="off" data-ad-picker="true" required>
                 <div class="attendee-menu" id="attendees-menu"></div>
             </div>
         </div>
@@ -320,7 +320,7 @@
 
     function renderMenu() {
         if (!users.length) {
-            menu.innerHTML = '<div class="attendee-empty">未找到匹配的 AD 用户</div>';
+            menu.innerHTML = '<div class="attendee-empty">未找到匹配的已配置用户</div>';
             menu.classList.add('open');
             return;
         }
@@ -357,7 +357,7 @@
         } catch (error) {
             if (id === requestId) {
                 users = [];
-                menu.innerHTML = '<div class="attendee-empty">AD 用户列表暂时不可用</div>';
+                menu.innerHTML = '<div class="attendee-empty">用户列表暂时不可用</div>';
                 menu.classList.add('open');
             }
         }

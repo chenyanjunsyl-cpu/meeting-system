@@ -63,23 +63,31 @@ def get_user_by_username(username):
 
 
 def get_user_by_id(user_id):
-    return fetch_one("SELECT user_id, username, role FROM user_account WHERE user_id = ?", (user_id,))
+    return fetch_one(
+        "SELECT user_id, username, role, display_name, email, source FROM user_account WHERE user_id = ?",
+        (user_id,),
+    )
 
 
 def get_all_users():
-    return fetch_all("SELECT user_id, username, role FROM user_account ORDER BY username")
+    return fetch_all("SELECT user_id, username, role, display_name, email, source FROM user_account ORDER BY display_name, username")
 
 
-def add_user(username, password, role):
+def add_user(username, password, role, display_name=None, email="", source="local"):
+    display_name = (display_name or username).strip()
     with get_connection() as conn:
         conn.execute(
-            "INSERT INTO user_account (username, password_hash, role) VALUES (?, ?, ?)",
-            (username, generate_password_hash(password), role),
+            """
+            INSERT INTO user_account (username, password_hash, role, display_name, email, source)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (username, generate_password_hash(password), role, display_name, email, source),
         )
         conn.commit()
 
 
-def upsert_user_role(username, role):
+def upsert_user_role(username, role, display_name=None, email="", source="ad"):
+    display_name = (display_name or username).strip()
     with get_connection() as conn:
         existing = conn.execute(
             "SELECT user_id FROM user_account WHERE username = ?",
@@ -87,13 +95,23 @@ def upsert_user_role(username, role):
         ).fetchone()
         if existing:
             conn.execute(
-                "UPDATE user_account SET role = ? WHERE user_id = ?",
-                (role, existing["user_id"]),
+                """
+                UPDATE user_account
+                SET role = ?,
+                    display_name = COALESCE(NULLIF(?, ''), display_name, username),
+                    email = COALESCE(NULLIF(?, ''), email, ''),
+                    source = COALESCE(NULLIF(?, ''), source, 'ad')
+                WHERE user_id = ?
+                """,
+                (role, display_name, email, source, existing["user_id"]),
             )
         else:
             conn.execute(
-                "INSERT INTO user_account (username, password_hash, role) VALUES (?, ?, ?)",
-                (username, generate_password_hash("__ad_login_only__"), role),
+                """
+                INSERT INTO user_account (username, password_hash, role, display_name, email, source)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (username, generate_password_hash("__ad_login_only__"), role, display_name, email, source),
             )
         conn.commit()
 
@@ -180,8 +198,48 @@ def authenticate_user(username, password):
     if not user:
         return None
     if check_password_hash(user["password_hash"], password):
-        return {"username": user["username"], "role": user["role"]}
+        return {
+            "username": user["username"],
+            "display_name": user.get("display_name") or user["username"],
+            "email": user.get("email") or "",
+            "role": user["role"],
+            "source": user.get("source") or "local",
+        }
     return None
+
+
+def get_configured_people(query="", limit=50):
+    query = (query or "").strip()
+    params = []
+    sql = """
+        SELECT user_id, username, role, display_name, email, source
+        FROM user_account
+    """
+    if query:
+        like = f"%{query}%"
+        sql += " WHERE username LIKE ? OR display_name LIKE ? OR email LIKE ?"
+        params.extend([like, like, like])
+    sql += " ORDER BY display_name, username"
+    if limit is not None:
+        sql += " LIMIT ?"
+        params.append(limit)
+    return fetch_all(sql, tuple(params))
+
+
+def get_configured_people_by_usernames(usernames):
+    names = [name for name in usernames if name]
+    if not names:
+        return []
+    placeholders = ",".join("?" for _ in names)
+    return fetch_all(
+        f"""
+        SELECT user_id, username, role, display_name, email, source
+        FROM user_account
+        WHERE username IN ({placeholders})
+        ORDER BY display_name, username
+        """,
+        tuple(names),
+    )
 
 
 def get_room_by_id(room_id):
@@ -227,6 +285,40 @@ def get_user_bookings(username):
         "SELECT b.*, r.name AS room_name, r.location FROM booking b JOIN room r ON b.room_id = r.room_id WHERE b.owner = ? ORDER BY b.date DESC, b.start_time DESC",
         (username,),
     )
+
+
+def get_user_related_bookings(username):
+    """获取用户预约的会议，以及该用户作为参会人的会议。"""
+    user = get_user_by_username(username) or {}
+    display_name = user.get("display_name") or username
+    attendee_like_values = [f"%{username}%"]
+    if display_name != username:
+        attendee_like_values.append(f"%{display_name}%")
+    attendee_like_sql = " OR ".join("b.attendees LIKE ?" for _ in attendee_like_values)
+    rows = fetch_all(
+        f"""
+        SELECT b.*, r.name AS room_name, r.location
+        FROM booking b
+        JOIN room r ON b.room_id = r.room_id
+        WHERE b.owner = ?
+           OR (',' || COALESCE(b.attendee_usernames, '') || ',') LIKE ?
+           OR ({attendee_like_sql})
+        ORDER BY b.date DESC, b.start_time DESC
+        """,
+        (username, f"%,{username},%", *attendee_like_values),
+    )
+    for row in rows:
+        attendee_names = [item.strip() for item in (row.get("attendee_usernames") or "").split(",") if item.strip()]
+        is_owner = row.get("owner") == username
+        attendees_text = row.get("attendees") or ""
+        is_attendee = username in attendee_names or username in attendees_text or (display_name != username and display_name in attendees_text)
+        if is_owner and is_attendee:
+            row["relation"] = "both"
+        elif is_owner:
+            row["relation"] = "owner"
+        else:
+            row["relation"] = "attendee"
+    return rows
 
 
 def update_booking_minutes(booking_id, minutes):
@@ -323,6 +415,33 @@ def ensure_booking_minutes_column():
             conn.commit()
 
 
+def ensure_user_profile_columns():
+    with get_connection() as conn:
+        info = conn.execute("PRAGMA table_info(user_account)").fetchall()
+        columns = {row[1] for row in info}
+        if "display_name" not in columns:
+            conn.execute("ALTER TABLE user_account ADD COLUMN display_name TEXT NOT NULL DEFAULT ''")
+        if "email" not in columns:
+            conn.execute("ALTER TABLE user_account ADD COLUMN email TEXT NOT NULL DEFAULT ''")
+        if "source" not in columns:
+            conn.execute("ALTER TABLE user_account ADD COLUMN source TEXT NOT NULL DEFAULT 'local'")
+        conn.execute("UPDATE user_account SET display_name = username WHERE display_name = ''")
+        conn.execute("UPDATE user_account SET source = 'local' WHERE source = ''")
+        conn.commit()
+
+
+def ensure_booking_profile_columns():
+    with get_connection() as conn:
+        info = conn.execute("PRAGMA table_info(booking)").fetchall()
+        columns = {row[1] for row in info}
+        if "owner_display" not in columns:
+            conn.execute("ALTER TABLE booking ADD COLUMN owner_display TEXT NOT NULL DEFAULT ''")
+        if "attendee_usernames" not in columns:
+            conn.execute("ALTER TABLE booking ADD COLUMN attendee_usernames TEXT NOT NULL DEFAULT ''")
+        conn.execute("UPDATE booking SET owner_display = owner WHERE owner_display = ''")
+        conn.commit()
+
+
 def init_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with get_connection() as conn:
@@ -342,7 +461,10 @@ def init_db():
                 user_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT NOT NULL UNIQUE,
                 password_hash TEXT NOT NULL,
-                role TEXT NOT NULL
+                role TEXT NOT NULL,
+                display_name TEXT NOT NULL DEFAULT '',
+                email TEXT NOT NULL DEFAULT '',
+                source TEXT NOT NULL DEFAULT 'local'
             )
             """
         )
@@ -355,26 +477,30 @@ def init_db():
                 start_time TEXT NOT NULL,
                 end_time TEXT NOT NULL,
                 owner TEXT NOT NULL,
+                owner_display TEXT NOT NULL DEFAULT '',
                 subject TEXT NOT NULL,
                 attendees TEXT NOT NULL DEFAULT '',
+                attendee_usernames TEXT NOT NULL DEFAULT '',
                 FOREIGN KEY (room_id) REFERENCES room(room_id) ON DELETE CASCADE
             )
             """
         )
         ensure_ad_config_table()
+        ensure_user_profile_columns()
         ensure_booking_attendees_column()
         ensure_booking_minutes_column()
+        ensure_booking_profile_columns()
         sync_rooms_from_config()
 
         existing_users = conn.execute("SELECT COUNT(*) FROM user_account").fetchone()[0]
         if existing_users == 0:
             conn.execute(
-                "INSERT INTO user_account (username, password_hash, role) VALUES (?, ?, ?)",
-                ("user", generate_password_hash("user123"), "user"),
+                "INSERT INTO user_account (username, password_hash, role, display_name, source) VALUES (?, ?, ?, ?, ?)",
+                ("user", generate_password_hash("user123"), "user", "普通用户", "local"),
             )
             conn.execute(
-                "INSERT INTO user_account (username, password_hash, role) VALUES (?, ?, ?)",
-                ("admin", generate_password_hash("admin123"), "admin"),
+                "INSERT INTO user_account (username, password_hash, role, display_name, source) VALUES (?, ?, ?, ?, ?)",
+                ("admin", generate_password_hash("admin123"), "admin", "管理员", "local"),
             )
             conn.commit()
 
@@ -383,26 +509,36 @@ def init_db():
             row = conn.execute("SELECT room_id FROM room ORDER BY name LIMIT 1").fetchone()
             if row:
                 conn.execute(
-                    "INSERT INTO booking (room_id, date, start_time, end_time, owner, subject, attendees) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (row["room_id"], date.today().isoformat(), "10:00", "11:00", "张三", "项目例会", "张三, 李四"),
+                    """
+                    INSERT INTO booking (room_id, date, start_time, end_time, owner, owner_display, subject, attendees, attendee_usernames)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (row["room_id"], date.today().isoformat(), "10:00", "11:00", "user", "普通用户", "项目例会", "普通用户 (user)", "user"),
                 )
                 conn.commit()
 
 
-def add_booking(room_id, date_value, start_time, end_time, owner, subject, attendees):
+def add_booking(room_id, date_value, start_time, end_time, owner, subject, attendees, owner_display="", attendee_usernames=""):
     with get_connection() as conn:
         conn.execute(
-            "INSERT INTO booking (room_id, date, start_time, end_time, owner, subject, attendees) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (room_id, date_value, start_time, end_time, owner, subject, attendees),
+            """
+            INSERT INTO booking (room_id, date, start_time, end_time, owner, owner_display, subject, attendees, attendee_usernames)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (room_id, date_value, start_time, end_time, owner, owner_display or owner, subject, attendees, attendee_usernames),
         )
         conn.commit()
 
 
-def update_booking(booking_id, room_id, date_value, start_time, end_time, owner, subject, attendees):
+def update_booking(booking_id, room_id, date_value, start_time, end_time, owner, subject, attendees, owner_display="", attendee_usernames=""):
     with get_connection() as conn:
         conn.execute(
-            "UPDATE booking SET room_id = ?, date = ?, start_time = ?, end_time = ?, owner = ?, subject = ?, attendees = ? WHERE booking_id = ?",
-            (room_id, date_value, start_time, end_time, owner, subject, attendees, booking_id),
+            """
+            UPDATE booking
+            SET room_id = ?, date = ?, start_time = ?, end_time = ?, owner = ?, owner_display = ?, subject = ?, attendees = ?, attendee_usernames = ?
+            WHERE booking_id = ?
+            """,
+            (room_id, date_value, start_time, end_time, owner, owner_display or owner, subject, attendees, attendee_usernames, booking_id),
         )
         conn.commit()
 

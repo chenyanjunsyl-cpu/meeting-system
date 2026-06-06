@@ -1,3 +1,4 @@
+import json
 import os
 import sqlite3
 from datetime import date, datetime, timedelta
@@ -17,7 +18,9 @@ from models import (
     get_bookings_by_date,
     get_bookings_by_date_range,
     get_booking_dates,
-    get_user_bookings,
+    get_user_related_bookings,
+    get_configured_people,
+    get_user_by_username,
     update_booking_minutes,
     add_user,
     upsert_user_role,
@@ -124,6 +127,65 @@ def is_ten_minute_time(value):
     return parsed.minute % 10 == 0
 
 
+def user_display_name(user):
+    if not user:
+        return ""
+    return user.get("display_name") or user.get("username") or ""
+
+
+def person_label(user):
+    display_name = user.get("display_name") or user.get("username") or ""
+    username = user.get("username") or ""
+    if display_name and username and display_name != username:
+        return f"{display_name} ({username})"
+    return username or display_name
+
+
+def normalize_attendees(raw_value):
+    tokens = [item.strip() for item in (raw_value or "").replace("，", ",").split(",") if item.strip()]
+    if not tokens:
+        return None, None, "请选择参会人员。"
+
+    people = get_configured_people(query="", limit=None)
+    aliases = {}
+    for user in people:
+        username = (user.get("username") or "").strip()
+        display_name = (user.get("display_name") or username).strip()
+        label = person_label(user)
+        for value in {username, display_name, label}:
+            if value:
+                aliases[value.lower()] = user
+
+    selected = []
+    seen = set()
+    unknown = []
+    for token in tokens:
+        match = token
+        bracket = token.rfind("(")
+        full_width_bracket = token.rfind("（")
+        if bracket >= 0 and token.endswith(")"):
+            match = token[bracket + 1:-1].strip()
+        elif full_width_bracket >= 0 and token.endswith("）"):
+            match = token[full_width_bracket + 1:-1].strip()
+        user = aliases.get(match.lower()) or aliases.get(token.lower())
+        if not user:
+            unknown.append(token)
+            continue
+        username = user.get("username")
+        if username and username not in seen:
+            selected.append(user)
+            seen.add(username)
+
+    if unknown:
+        return None, None, f"参会人员只能从后台已配置用户中选择，未识别：{', '.join(unknown)}。"
+    if not selected:
+        return None, None, "请选择参会人员。"
+
+    attendees = ", ".join(person_label(user) for user in selected)
+    attendee_usernames = ",".join(user["username"] for user in selected)
+    return attendees, attendee_usernames, None
+
+
 @app.context_processor
 def inject_user():
     return {"current_user": session.get("user")}
@@ -132,14 +194,8 @@ def inject_user():
 @app.route("/api/ad/users")
 @login_required
 def api_ad_users():
-    if not is_ad_enabled():
-        return jsonify({"enabled": False, "users": []})
-
     query = request.args.get("q", "").strip()
-    try:
-        users = search_ad_users(query=query, limit=20)
-    except ADServiceError as exc:
-        return jsonify({"enabled": True, "users": [], "error": str(exc)}), 503
+    users = get_configured_people(query=query, limit=20)
 
     payload = []
     for user in users:
@@ -155,6 +211,7 @@ def api_ad_users():
             "display_name": display_name,
             "email": email,
             "label": label,
+            "source": user.get("source") or "local",
         })
     return jsonify({"enabled": True, "users": payload})
 
@@ -206,13 +263,6 @@ def index():
                 "bookings": [],
             })
 
-    ad_people = []
-    try:
-        if session.get("user") and is_ad_enabled():
-            ad_people = search_ad_users(limit=50)
-    except ADServiceError:
-        ad_people = []
-
     return render_template(
         "index.html",
         selected_date=selected_date,
@@ -223,7 +273,6 @@ def index():
         room_status=room_status,
         rooms=rooms,
         bookings=bookings,
-        ad_people=ad_people,
         now_datetime=datetime.now().strftime("%Y-%m-%d %H:%M"),
     )
 
@@ -237,13 +286,17 @@ def book():
     start_time = form.get("start_time")
     end_time = form.get("end_time")
     owner = session["user"]["username"]
+    owner_display = user_display_name(session["user"])
     subject = form.get("subject", "").strip()
     attendees_values = [value.strip() for value in form.getlist("attendees") if value.strip()]
-    attendees = ", ".join(attendees_values) if attendees_values else form.get("attendees", "").strip()
+    raw_attendees = ", ".join(attendees_values) if attendees_values else form.get("attendees", "").strip()
+    attendees, attendee_usernames, attendees_error = normalize_attendees(raw_attendees)
 
-    if not (room_id and date_value and start_time and end_time and owner and subject and attendees):
+    if not (room_id and date_value and start_time and end_time and owner and subject and raw_attendees):
         error = "请填写所有预约信息，包括参会人员。"
         return render_template("result.html", error=error)
+    if attendees_error:
+        return render_template("result.html", error=attendees_error)
 
     if start_time >= end_time:
         error = "开始时间必须早于结束时间。"
@@ -266,7 +319,7 @@ def book():
         error = "该会议室在所选时间段已被占用，无法重复预定。"
         return render_template("result.html", error=error)
 
-    add_booking(room_id, date_value, start_time, end_time, owner, subject, attendees)
+    add_booking(room_id, date_value, start_time, end_time, owner, subject, attendees, owner_display, attendee_usernames)
     message = "预约成功！请刷新页面查看最新预定情况。"
     return render_template("result.html", message=message)
 
@@ -279,6 +332,9 @@ def login():
         password = request.form.get("password", "")
         user = authenticate_ad_user(username, password) or authenticate_user(username, password)
         if user:
+            user["display_name"] = user.get("display_name") or user.get("username")
+            user["email"] = user.get("email") or ""
+            user["source"] = user.get("source") or "local"
             session["user"] = user
             return redirect(safe_redirect_target(request.args.get("next")))
         error = "用户名或密码不正确。"
@@ -319,10 +375,15 @@ def admin_update_booking(booking_id):
     end_time = form.get("end_time")
     owner = form.get("owner", "匿名")
     subject = form.get("subject", "会议预约")
-    attendees = form.get("attendees", "")
+    raw_attendees = form.get("attendees", "")
+    attendees, attendee_usernames, attendees_error = normalize_attendees(raw_attendees)
+    owner_record = get_user_by_username(owner)
+    owner_display = (owner_record or {}).get("display_name") or owner
 
-    if not (room_id and date_value and start_time and end_time and owner and subject and attendees):
+    if not (room_id and date_value and start_time and end_time and owner and subject and raw_attendees):
         return render_template("result.html", error="请填写所有预约信息，包括参会人员。")
+    if attendees_error:
+        return render_template("result.html", error=attendees_error)
 
     if start_time >= end_time:
         return render_template("result.html", error="开始时间必须早于结束时间。")
@@ -343,7 +404,7 @@ def admin_update_booking(booking_id):
     if check_booking_conflict(room_id, date_value, start_time, end_time, exclude_booking_id=booking_id):
         return render_template("result.html", error="该会议室在所选时间段已被占用，无法修改为该时间。")
 
-    update_booking(booking_id, room_id, date_value, start_time, end_time, owner, subject, attendees)
+    update_booking(booking_id, room_id, date_value, start_time, end_time, owner, subject, attendees, owner_display, attendee_usernames)
     return render_template("result.html", message="预约已更新成功。")
 
 
@@ -470,18 +531,57 @@ def admin_test_ad_config():
 def admin_set_ad_user_role():
     username = request.form.get("username", "").strip()
     role = request.form.get("role", "user")
+    display_name = request.form.get("display_name", "").strip() or username
+    email = request.form.get("email", "").strip()
     if not username:
         return render_admin_users(error="请选择 AD 用户。")
     if role not in {"user", "admin"}:
         return render_admin_users(error="请选择有效的用户权限。")
-    upsert_user_role(username, role)
+    upsert_user_role(username, role, display_name=display_name, email=email, source="ad")
     return render_admin_users(message=f"已为 AD 用户 {username} 设置系统权限。")
+
+
+@app.route("/admin/ad/import", methods=["POST"])
+@admin_required
+def admin_import_ad_users():
+    raw_users = request.form.get("selected_users_json", "")
+    try:
+        selected_users = json.loads(raw_users) if raw_users else []
+    except json.JSONDecodeError:
+        return render_admin_users(error="所选 AD 用户数据无效，请重新勾选。")
+
+    if isinstance(selected_users, dict):
+        selected_users = list(selected_users.values())
+    if not isinstance(selected_users, list) or not selected_users:
+        return render_admin_users(error="请先勾选需要加入系统的 AD 用户。")
+
+    imported = 0
+    for user in selected_users:
+        if not isinstance(user, dict):
+            continue
+        username = (user.get("username") or "").strip()
+        if not username:
+            continue
+        role = user.get("role") if user.get("role") in {"user", "admin"} else "user"
+        upsert_user_role(
+            username,
+            role,
+            display_name=(user.get("display_name") or username).strip(),
+            email=(user.get("email") or "").strip(),
+            source="ad",
+        )
+        imported += 1
+
+    if not imported:
+        return render_admin_users(error="没有可导入的 AD 用户。")
+    return render_admin_users(message=f"已导入 {imported} 个 AD 用户，可用于登录权限管理和参会人员选择。")
 
 
 @app.route("/admin/users/add", methods=["POST"])
 @admin_required
 def admin_add_user():
     username = request.form.get("username", "").strip()
+    display_name = request.form.get("display_name", "").strip() or username
     password = request.form.get("password", "")
     role = request.form.get("role", "user")
 
@@ -493,7 +593,7 @@ def admin_add_user():
         return render_admin_users(error="密码至少需要 6 位。")
 
     try:
-        add_user(username, password, role)
+        add_user(username, password, role, display_name=display_name, source="local")
     except sqlite3.IntegrityError:
         return render_admin_users(error="该用户名已存在。")
 
@@ -700,7 +800,7 @@ def export_history():
             booking["start_time"],
             booking["end_time"],
             booking["subject"],
-            booking["owner"],
+            booking.get("owner_display") or booking["owner"],
             booking["attendees"],
             booking.get("minutes", ""),
         ])
@@ -715,13 +815,40 @@ def export_history():
 @app.route("/my_bookings")
 @login_required
 def my_bookings():
-    """查看我的预约列表"""
+    """查看当前用户预约或需要参加的会议。"""
     user = session.get("user")
     username = user.get("username")
-    bookings = get_user_bookings(username)
+    bookings = get_user_related_bookings(username)
+    now = datetime.now()
+    owned_bookings = []
+    pending_attendee_bookings = []
+    attended_bookings = []
+
+    for booking in bookings:
+        start_at = parse_booking_datetime(booking.get("date"), booking.get("start_time"))
+        end_at = parse_booking_datetime(booking.get("date"), booking.get("end_time"))
+        booking["can_write_minutes"] = bool(start_at and start_at <= now)
+        booking["is_ended"] = bool(end_at and end_at <= now)
+        booking["is_owner"] = booking.get("relation") in {"owner", "both"}
+        if booking["is_owner"]:
+            owned_bookings.append(booking)
+        elif booking["is_ended"]:
+            attended_bookings.append(booking)
+        else:
+            pending_attendee_bookings.append(booking)
+
+    owned_bookings.sort(key=lambda item: (item["date"], item["start_time"]), reverse=True)
+    pending_attendee_bookings.sort(key=lambda item: (item["date"], item["start_time"]))
+    attended_bookings.sort(key=lambda item: (item["date"], item["start_time"]), reverse=True)
+
     return render_template(
         "my_bookings.html",
         bookings=bookings,
+        owned_bookings=owned_bookings,
+        pending_attendee_bookings=pending_attendee_bookings,
+        attended_bookings=attended_bookings,
+        username=username,
+        user_role=user.get("role"),
         now_date=date.today().isoformat(),
         now_datetime=datetime.now().strftime("%Y-%m-%d %H:%M"),
     )
@@ -776,7 +903,7 @@ def edit_booking_minutes(booking_id):
             "result.html",
             success="会议纪要已保存。",
             redirect_url="/my_bookings",
-            button_text="返回我的预约",
+            button_text="返回我的会议",
         )
     
     return render_template("edit_minutes.html", booking=booking)

@@ -55,7 +55,7 @@
                     <td>{{ booking.date }}</td>
                     <td>{{ booking.start_time }} - {{ booking.end_time }}</td>
                     <td>{{ booking.subject }}</td>
-                    <td>{{ booking.owner }}</td>
+                    <td>{{ booking.owner_display or booking.owner }}</td>
                     <td>{{ booking.attendees }}</td>
                     <td>
                         <a href="/admin/bookings/edit/{{ booking.booking_id }}" class="button" style="background:#f59e0b;">编辑</a>

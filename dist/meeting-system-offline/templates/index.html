@@ -92,7 +92,7 @@
         <div>
             {% if current_user %}
                 <span>欢迎，{{ current_user.username }}（{{ current_user.role }}）</span>
-                <a href="/my_bookings" class="button" style="background:#10b981;">我的预约</a>
+                <a href="/my_bookings" class="button" style="background:#10b981;">我的会议</a>
                 <a href="/history" class="button" style="background:#7c3aed;">历史查询</a>
                 <a href="/logout" class="button" style="background:#6b7280;">退出</a>
                 {% if current_user.role == 'admin' %}
@@ -157,7 +157,7 @@
                             <div class="week-booking">
                                 <div class="week-booking-time">{{ booking.start_time }} - {{ booking.end_time }}</div>
                                 <div class="week-booking-title">{{ booking.subject }}</div>
-                                <div class="week-booking-meta">{{ booking.room_name }} · {{ booking.owner }}</div>
+                                <div class="week-booking-meta">{{ booking.room_name }} · {{ booking.owner_display or booking.owner }}</div>
                             </div>
                         {% endfor %}
                     {% else %}
@@ -189,7 +189,7 @@
                         <td>{{ booking.room_name }}</td>
                         <td>{{ booking.start_time }} - {{ booking.end_time }}</td>
                         <td>{{ booking.subject }}</td>
-                        <td>{{ booking.owner }}</td>
+                        <td>{{ booking.owner_display or booking.owner }}</td>
                         <td>{{ booking.attendees }}</td>
                         {% if current_user %}
                             <td>
@@ -256,12 +256,12 @@
                 </div>
                 <div class="form-row">
                     <label for="owner">申请人</label>
-                    <input type="text" id="owner" value="{{ current_user.username }}" readonly>
+                    <input type="text" id="owner" value="{{ current_user.display_name or current_user.username }}" readonly>
                 </div>
                 <div class="form-row">
                     <label for="attendees">参会人员</label>
                     <div class="attendee-picker">
-                        <input type="text" id="attendees" name="attendees" placeholder="请输入或选择参会人员，用逗号分隔" autocomplete="off" data-ad-picker="true" required>
+                        <input type="text" id="attendees" name="attendees" placeholder="只能选择后台已配置用户，用逗号分隔" autocomplete="off" data-ad-picker="true" required>
                         <div class="attendee-menu" id="attendees-menu"></div>
                     </div>
                 </div>
@@ -494,7 +494,7 @@
 
     function renderMenu() {
         if (!users.length) {
-            menu.innerHTML = '<div class="attendee-empty">未找到匹配的 AD 用户</div>';
+            menu.innerHTML = '<div class="attendee-empty">未找到匹配的已配置用户</div>';
             menu.classList.add('open');
             return;
         }
@@ -531,7 +531,7 @@
         } catch (error) {
             if (id === requestId) {
                 users = [];
-                menu.innerHTML = '<div class="attendee-empty">AD 用户列表暂时不可用</div>';
+                menu.innerHTML = '<div class="attendee-empty">用户列表暂时不可用</div>';
                 menu.classList.add('open');
             }
         }

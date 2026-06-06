@@ -155,7 +155,7 @@
                             <td>{{ booking.room_name }}</td>
                             <td>{{ booking.start_time }} - {{ booking.end_time }}</td>
                             <td>{{ booking.subject }}</td>
-                            <td>{{ booking.owner }}</td>
+                            <td>{{ booking.owner_display or booking.owner }}</td>
                             <td style="color: #6b7280; font-size: 0.9rem;">{{ booking.attendees }}</td>
                             <td class="minutes-cell">
                                 {% if booking.minutes %}
