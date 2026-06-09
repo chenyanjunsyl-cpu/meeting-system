@@ -157,8 +157,9 @@ def normalize_attendees(raw_value):
                 aliases[value.lower()] = user
 
     selected = []
+    attendee_labels = []
     seen = set()
-    unknown = []
+    external_seen = set()
     for token in tokens:
         match = token
         bracket = token.rfind("(")
@@ -169,19 +170,21 @@ def normalize_attendees(raw_value):
             match = token[full_width_bracket + 1:-1].strip()
         user = aliases.get(match.lower()) or aliases.get(token.lower())
         if not user:
-            unknown.append(token)
+            external_key = token.lower()
+            if external_key not in external_seen:
+                attendee_labels.append(token)
+                external_seen.add(external_key)
             continue
         username = user.get("username")
         if username and username not in seen:
             selected.append(user)
+            attendee_labels.append(person_label(user))
             seen.add(username)
 
-    if unknown:
-        return None, None, f"参会人员只能从后台已配置用户中选择，未识别：{', '.join(unknown)}。"
-    if not selected:
+    if not attendee_labels:
         return None, None, "请选择参会人员。"
 
-    attendees = ", ".join(person_label(user) for user in selected)
+    attendees = ", ".join(attendee_labels)
     attendee_usernames = ",".join(user["username"] for user in selected)
     return attendees, attendee_usernames, None
 
@@ -574,7 +577,7 @@ def admin_import_ad_users():
 
     if not imported:
         return render_admin_users(error="没有可导入的 AD 用户。")
-    return render_admin_users(message=f"已导入 {imported} 个 AD 用户，可用于登录权限管理和参会人员选择。")
+    return render_admin_users(message=f"已将 {imported} 个 AD 用户加入系统用户列表，可用于登录权限管理和参会人员选择。")
 
 
 @app.route("/admin/users/add", methods=["POST"])

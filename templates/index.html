@@ -261,7 +261,7 @@
                 <div class="form-row">
                     <label for="attendees">参会人员</label>
                     <div class="attendee-picker">
-                        <input type="text" id="attendees" name="attendees" placeholder="只能选择后台已配置用户，用逗号分隔" autocomplete="off" data-ad-picker="true" required>
+                        <input type="text" id="attendees" name="attendees" placeholder="选择系统用户，或直接输入外部参会人，用逗号分隔" autocomplete="off" data-ad-picker="true" required>
                         <div class="attendee-menu" id="attendees-menu"></div>
                     </div>
                 </div>
@@ -494,7 +494,7 @@
 
     function renderMenu() {
         if (!users.length) {
-            menu.innerHTML = '<div class="attendee-empty">未找到匹配的已配置用户</div>';
+            menu.innerHTML = '<div class="attendee-empty">未找到匹配的系统用户，可直接输入外部参会人</div>';
             menu.classList.add('open');
             return;
         }
